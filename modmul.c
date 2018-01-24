@@ -108,6 +108,16 @@ void RSAencrypt(mpz_t N, mpz_t e, mpz_t message, mpz_t cipher) {
     mpz_powm(cipher, message, e, N);
 }
 
+// N, d, p, q, d_p, d_q, i_p, i_q, c
+//void RSAencrypt(mpz_t N, mpz_t d, mpz_t p, mpz_t d_p, mpz_t d_q, mpz_t i_p, mpz_t i_q, mpz_t c) {
+void RSAdecrypt(mpz_t N, mpz_t d, mpz_t cipher, mpz_t message) {
+    //mpz_powm(cipher, message, e, N);
+    //mpz_t lcm;
+    //mpz_int(lcm);
+    //mpz_lcm(lcm, d_p, d_q);
+    mpz_powm(message, cipher, d, N);
+}
+
 // m^e (mod N)
 void stage1() {
     const int exp_size = 3;
@@ -137,9 +147,23 @@ void stage1() {
  */
 
 void stage2() {
+    const int exp_size = 9;
 
-  // fill in this function with solution
+    mpz_t fields[exp_size];
+    for (int i=0; i < exp_size; i++) {
+        mpz_init(fields[i]);
+    }
 
+    while(readGroup(exp_size, fields) != -1) {
+        mpz_t message;
+        mpz_init(message);
+
+        RSAdecrypt(fields[0], fields[1], fields[8], message);
+
+        char* out = intToStr(message);
+
+        fprintf( stdout, "%s\n", out);
+    }
 }
 
 /* Perform stage 3:
