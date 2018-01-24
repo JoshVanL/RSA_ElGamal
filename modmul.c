@@ -17,6 +17,37 @@
  * - write the ciphertext c to stdout.
  */
 
+typedef struct {
+    mpz_t N;
+    mpz_t e;
+    mpz_t m;
+} RSA_public_key;
+
+typedef struct {
+    mpz_t N;
+    mpz_t d;
+    mpz_t p, q;
+    mpz_t d_p, d_q;
+    mpz_t i_p, i_q;
+    mpz_t c;
+} RSA_private_key;
+
+typedef struct {
+    mpz_t p;
+    mpz_t q;
+    mpz_t g;
+    mpz_t h;
+    mpz_t m;
+} ElGamal_public_key;
+
+typedef struct {
+    mpz_t p;
+    mpz_t q;
+    mpz_t g;
+    mpz_t x;
+    mpz_t c1, c2;
+} ElGamal_private_key;
+
 int hexToInt(char ch) {
     if (ch >= '0' && ch <= '9')
         return ch - '0';
@@ -104,41 +135,35 @@ int readGroup(int size, mpz_t field[size]) {
 }
 
 // N, e, m
-void RSAEncrypt(mpz_t N, mpz_t e, mpz_t message, mpz_t cipher) {
+void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
     mpz_init(cipher);
-    mpz_powm(cipher, message, e, N);
+    mpz_powm(cipher, pk->m, pk->e, pk->N);
 }
 
-//TODO: Put all input into this function
-// N, d, p, q, d_p, d_q, i_p, i_q, c
-//void RSAencrypt(mpz_t N, mpz_t d, mpz_t p, mpz_t d_p, mpz_t d_q, mpz_t i_p, mpz_t i_q, mpz_t c) {
-void RSADecrypt(mpz_t N, mpz_t d, mpz_t cipher, mpz_t message) {
+void RSADecrypt(RSA_private_key *sk, mpz_t message) {
     mpz_init(message);
-    mpz_powm(message, cipher, d, N);
+    mpz_powm(message, sk->c, sk->d, sk->N);
 }
 
-// g, p q, h, message, c1, c2
-void ElGamalEncrypt(mpz_t p, mpz_t q, mpz_t g, mpz_t h, mpz_t message, mpz_t c1, mpz_t c2) {
+void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2) {
     // Make random k
     int k = 1;
     mpz_init(c1);
     mpz_init(c2);
 
-    mpz_powm_ui(c1, g, k, p);
-    mpz_pow_ui(c2, h, k);
-    mpz_mul(c2, c2, message);
-    mpz_mod(c2, c2, p);
+    mpz_powm_ui(c1, pk->g, k, pk->p);
+    mpz_pow_ui(c2, pk->h, k);
+    mpz_mul(c2, c2, pk->m);
+    mpz_mod(c2, c2, pk->p);
 }
 
-// p, q, g, x, c1, c2, message
-// * - read each 5-tuple of p, q, g, x and c = (c_1,c_2) from stdin,
-void ElGamalDecryption(mpz_t p, mpz_t q, mpz_t g, mpz_t x, mpz_t c1, mpz_t c2, mpz_t message) {
+void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
     mpz_init(message);
 
-    mpz_powm_sec(c1, c1, x, p);
-    mpz_invert(c1, c1, p);
-    mpz_mul(message, c1, c2);
-    mpz_mod(message, message, p);
+    mpz_powm(sk->c1, sk->c1, sk->x, sk->p);
+    mpz_invert(sk->c1, sk->c1, sk->p);
+    mpz_mul(message, sk->c2, sk->c1);
+    mpz_mod(message, message, sk->p);
 }
 
 // m^e (mod N)
@@ -152,20 +177,22 @@ void stage1() {
 
     while(readGroup(exp_size, fields) != -1) {
         mpz_t cipher;
-        RSAEncrypt(fields[0], fields[1], fields[2], cipher);
+        RSA_public_key pk;
+        mpz_init(pk.N);
+        mpz_init(pk.e);
+        mpz_init(pk.m);
+
+        mpz_set(pk.N, fields[0]);
+        mpz_set(pk.e, fields[1]);
+        mpz_set(pk.m, fields[2]);
+
+        RSAEncrypt(&pk, cipher);
 
         char* out = intToStr(cipher);
 
         fprintf( stdout, "%s\n", out);
     }
 }
-
-/* Perform stage 2:
- *
- * - read each 9-tuple of N, d, p, q, d_p, d_q, i_p, i_q and c from stdin,
- * - compute the RSA decryption m, then
- * - write the plaintext m to stdout.
- */
 
 void stage2() {
     const int exp_size = 9;
@@ -177,21 +204,34 @@ void stage2() {
 
     while(readGroup(exp_size, fields) != -1) {
         mpz_t message;
+        RSA_private_key sk;
+        mpz_init(sk.N);
+        mpz_init(sk.d);
+        mpz_init(sk.p);
+        mpz_init(sk.q);
+        mpz_init(sk.d_p);
+        mpz_init(sk.d_q);
+        mpz_init(sk.i_p);
+        mpz_init(sk.i_q);
+        mpz_init(sk.c);
 
-        RSADecrypt(fields[0], fields[1], fields[8], message);
+        mpz_set(sk.N, fields[0]);
+        mpz_set(sk.d, fields[1]);
+        mpz_set(sk.p, fields[2]);
+        mpz_set(sk.q, fields[3]);
+        mpz_set(sk.d_p, fields[4]);
+        mpz_set(sk.d_q, fields[5]);
+        mpz_set(sk.i_p, fields[6]);
+        mpz_set(sk.i_q, fields[7]);
+        mpz_set(sk.c, fields[8]);
+
+        RSADecrypt(&sk, message);
 
         char* out = intToStr(message);
 
         fprintf( stdout, "%s\n", out);
     }
 }
-
-/* Perform stage 3:
- *
- * - read each 5-tuple of p, q, g, h and m from stdin,
- * - compute the ElGamal encryption c = (c_1,c_2), then
- * - write the ciphertext c to stdout.
- */
 
 void stage3() {
     const int exp_size = 5;
@@ -204,7 +244,20 @@ void stage3() {
     while(readGroup(exp_size, fields) != -1) {
         mpz_t c1;
         mpz_t c2;
-        ElGamalEncrypt(fields[0], fields[1], fields[2], fields[3], fields[4], c1, c2);
+        ElGamal_public_key pk;
+        mpz_init(pk.p);
+        mpz_init(pk.q);
+        mpz_init(pk.g);
+        mpz_init(pk.h);
+        mpz_init(pk.m);
+
+        mpz_set(pk.p, fields[0]);
+        mpz_set(pk.q, fields[1]);
+        mpz_set(pk.g, fields[2]);
+        mpz_set(pk.h, fields[3]);
+        mpz_set(pk.m, fields[4]);
+
+        ElGamalEncrypt(&pk, c1, c2);
 
         char* out1 = intToStr(c1);
         char* out2 = intToStr(c2);
@@ -213,12 +266,6 @@ void stage3() {
     }
 }
 
-/* Perform stage 4:
- * 
- * - read each 5-tuple of p, q, g, x and c = (c_1,c_2) from stdin,
- * - compute the ElGamal decryption m, then
- * - write the plaintext m to stdout.
- */
 void stage4() {
     const int exp_size = 6;
 
@@ -229,7 +276,22 @@ void stage4() {
 
     while(readGroup(exp_size, fields) != -1) {
         mpz_t message;
-        ElGamalDecryption(fields[0], fields[1], fields[2], fields[3], fields[4], fields[5], message);
+        ElGamal_private_key sk;
+        mpz_init(sk.p);
+        mpz_init(sk.q);
+        mpz_init(sk.g);
+        mpz_init(sk.x);
+        mpz_init(sk.c1);
+        mpz_init(sk.c2);
+
+        mpz_set(sk.p, fields[0]);
+        mpz_set(sk.q, fields[1]);
+        mpz_set(sk.g, fields[2]);
+        mpz_set(sk.x, fields[3]);
+        mpz_set(sk.c1, fields[4]);
+        mpz_set(sk.c2, fields[5]);
+
+        ElGamalDecryption(&sk, message);
 
         char* out = intToStr(message);
         fprintf( stdout, "%s\n", out);
