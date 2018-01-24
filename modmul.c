@@ -104,18 +104,41 @@ int readGroup(int size, mpz_t field[size]) {
 }
 
 // N, e, m
-void RSAencrypt(mpz_t N, mpz_t e, mpz_t message, mpz_t cipher) {
+void RSAEncrypt(mpz_t N, mpz_t e, mpz_t message, mpz_t cipher) {
+    mpz_init(cipher);
     mpz_powm(cipher, message, e, N);
 }
 
+//TODO: Put all input into this function
 // N, d, p, q, d_p, d_q, i_p, i_q, c
 //void RSAencrypt(mpz_t N, mpz_t d, mpz_t p, mpz_t d_p, mpz_t d_q, mpz_t i_p, mpz_t i_q, mpz_t c) {
-void RSAdecrypt(mpz_t N, mpz_t d, mpz_t cipher, mpz_t message) {
-    //mpz_powm(cipher, message, e, N);
-    //mpz_t lcm;
-    //mpz_int(lcm);
-    //mpz_lcm(lcm, d_p, d_q);
+void RSADecrypt(mpz_t N, mpz_t d, mpz_t cipher, mpz_t message) {
+    mpz_init(message);
     mpz_powm(message, cipher, d, N);
+}
+
+// g, p q, h, message, c1, c2
+void ElGamalEncrypt(mpz_t p, mpz_t q, mpz_t g, mpz_t h, mpz_t message, mpz_t c1, mpz_t c2) {
+    // Make random k
+    int k = 1;
+    mpz_init(c1);
+    mpz_init(c2);
+
+    mpz_powm_ui(c1, g, k, p);
+    mpz_pow_ui(c2, h, k);
+    mpz_mul(c2, c2, message);
+    mpz_mod(c2, c2, p);
+}
+
+// p, q, g, x, c1, c2, message
+// * - read each 5-tuple of p, q, g, x and c = (c_1,c_2) from stdin,
+void ElGamalDecryption(mpz_t p, mpz_t q, mpz_t g, mpz_t x, mpz_t c1, mpz_t c2, mpz_t message) {
+    mpz_init(message);
+
+    mpz_powm_sec(c1, c1, x, p);
+    mpz_invert(c1, c1, p);
+    mpz_mul(message, c1, c2);
+    mpz_mod(message, message, p);
 }
 
 // m^e (mod N)
@@ -129,9 +152,7 @@ void stage1() {
 
     while(readGroup(exp_size, fields) != -1) {
         mpz_t cipher;
-        mpz_init(cipher);
-
-        RSAencrypt(fields[0], fields[1], fields[2], cipher);
+        RSAEncrypt(fields[0], fields[1], fields[2], cipher);
 
         char* out = intToStr(cipher);
 
@@ -156,9 +177,8 @@ void stage2() {
 
     while(readGroup(exp_size, fields) != -1) {
         mpz_t message;
-        mpz_init(message);
 
-        RSAdecrypt(fields[0], fields[1], fields[8], message);
+        RSADecrypt(fields[0], fields[1], fields[8], message);
 
         char* out = intToStr(message);
 
@@ -174,9 +194,23 @@ void stage2() {
  */
 
 void stage3() {
+    const int exp_size = 5;
 
-  // fill in this function with solution
+    mpz_t fields[exp_size];
+    for (int i=0; i < exp_size; i++) {
+        mpz_init(fields[i]);
+    }
 
+    while(readGroup(exp_size, fields) != -1) {
+        mpz_t c1;
+        mpz_t c2;
+        ElGamalEncrypt(fields[0], fields[1], fields[2], fields[3], fields[4], c1, c2);
+
+        char* out1 = intToStr(c1);
+        char* out2 = intToStr(c2);
+        fprintf( stdout, "%s\n", out1);
+        fprintf( stdout, "%s\n", out2);
+    }
 }
 
 /* Perform stage 4:
@@ -185,11 +219,21 @@ void stage3() {
  * - compute the ElGamal decryption m, then
  * - write the plaintext m to stdout.
  */
-
 void stage4() {
+    const int exp_size = 6;
 
-  // fill in this function with solution
+    mpz_t fields[exp_size];
+    for (int i=0; i < exp_size; i++) {
+        mpz_init(fields[i]);
+    }
 
+    while(readGroup(exp_size, fields) != -1) {
+        mpz_t message;
+        ElGamalDecryption(fields[0], fields[1], fields[2], fields[3], fields[4], fields[5], message);
+
+        char* out = intToStr(message);
+        fprintf( stdout, "%s\n", out);
+    }
 }
 
 /* The main function acts as a driver for the assignment by simply invoking the
