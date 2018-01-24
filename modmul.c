@@ -7,7 +7,8 @@
 
 #include "modmul.h"
 
-#define INPUT_BASE 16
+#define BASE 16
+#define WORD_LENGTH 256
 
 /* Perform stage 1:
  *
@@ -26,59 +27,77 @@ int hexToInt(char ch) {
     return -1;
 }
 
+char intToHex(int n) {
+    if (n > 9) {
+        return 'A' + (n - 10);
+    }
+    return n + '0';
+}
 
-void intToStr(char* str, mpz_t num) {
+
+char* intToStr(mpz_t num) {
     int loc =0;
-    mpz_t curr;
+    char* str = malloc((WORD_LENGTH)*sizeof(char));
     mpz_t pow;
     mpz_t quot;
-    mpz_inits(curr, pow, quot);
+    mpz_init(pow);
+    mpz_init(quot);
 
-    str = malloc(256*sizeof(char));
-    for(int i=255; i>= 0; i--) {
-        mpz_ui_pow_ui(pow, 16, i);
+    for(int i=(WORD_LENGTH - 1); i>= 0; i--) {
+        mpz_ui_pow_ui(pow, BASE, i);
 
-        if (mpz_cmp(curr, pow) < 0) {
+        if (mpz_cmp(num, pow) < 0) {
             str[loc] = '0';
 
         } else {
-            mpz_tdiv_q(quot, curr, pow);
-            mpz_mod(curr, curr, pow);
-            sprintf(str, "%x", num);
+            mpz_tdiv_q(quot, num, pow);
+            mpz_mod(num, num, pow);
 
+            int lquote = mpz_get_ui(quot);
+
+            char c = intToHex(lquote);
+            str[loc] = c;
         }
-        str++;
+        loc++;
     }
+
+    char * out = str;
+    while (*out=='0') out++;
+
+    return out;
 }
 
 void strToInt(mpz_t num, char* str) {
     int pow = 0;
     mpz_t tmp;
-    mpz_inits(num, tmp);
+    mpz_init(num);
+    mpz_init(tmp);
     str[strcspn(str, "\n\r")] = 0;
 
-    for (int i=strlen(str); i >= 0; i--) {
-        mpz_ui_pow_ui(tmp, hexToInt(str[i]), pow);
+    for (int i=(WORD_LENGTH - 1); i >= 0; i--) {
+        mpz_ui_pow_ui(tmp, BASE, pow);
+        mpz_mul_si(tmp, tmp, hexToInt(str[i]));
         mpz_add(num, num, tmp);
+        mpz_init(tmp);
         pow++;
     }
 }
 
-int readGroup(mpz_t *field, int size) {
+int readGroup(int size, mpz_t field[size]) {
 
     for (int i=0; i < size; i++) {
-        char* line;
-        size_t n = 1024;
+        char* line = NULL;
+        unsigned long n = 100;
 
         if (getline(&line, &n, stdin) == -1) {
-            fprintf( stderr, "ERROR: failed to read line [%d]", i);
+            if (i != 0) {
+                fprintf( stderr, "ERROR: epected %d further fields\n", size - i);
+                exit(1);
+            }
             return -1;
         }
 
         strToInt(field[i], line);
-        //fprintf( stdout, "%s", line);
-        //gmp_printf("%Zd\n", field[i]);
-        //fprintf( stdout, "\n");
     }
 
     return 0;
@@ -98,24 +117,16 @@ void stage1() {
         mpz_init(fields[i]);
     }
 
-    if (readGroup(fields, exp_size) == -1) {
-        exit(1);
+    while(readGroup(exp_size, fields) != -1) {
+        mpz_t cipher;
+        mpz_init(cipher);
+
+        RSAencrypt(fields[0], fields[1], fields[2], cipher);
+
+        char* out = intToStr(cipher);
+
+        fprintf( stdout, "%s\n", out);
     }
-
-
-//gmp_printf ("%s is an mpz %Zd\n", "here", z);
-
-    //for (int i=0; i < exp_size; i++) {
-    //    gmp_printf(">%Zd\n", fields[i]);
-    //}
-
-    mpz_t cipher;
-    char* out = NULL;
-
-    RSAencrypt(fields[0], fields[1], fields[2], cipher);
-    intToStr(out, cipher);
-
-    fprintf( stdout, "%s\n", out);
 }
 
 /* Perform stage 2:
