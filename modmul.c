@@ -141,9 +141,20 @@ void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
     mpz_powm(cipher, pk->m, pk->e, pk->N);
 }
 
+//Uses CRT with Garner's formula
 void RSADecrypt(RSA_private_key *sk, mpz_t message) {
+    mpz_t m1, m2;
+    mpz_init(m1);
+    mpz_init(m2);
     mpz_init(message);
-    mpz_powm(message, sk->c, sk->d, sk->N);
+
+    mpz_powm(m1, sk->c, sk->d_p, sk->p);
+    mpz_powm(m2, sk->c, sk->d_q, sk->q);
+    mpz_sub(m1, m1, m2);
+    mpz_mul(m1, sk->i_q, m1);
+    mpz_mod(m1, m1, sk->p);
+    mpz_mul(m1, m1, sk->q);
+    mpz_add(message, m1, m2);
 }
 
 void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2) {
