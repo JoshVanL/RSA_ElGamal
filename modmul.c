@@ -9,6 +9,7 @@
 
 #define BASE 16
 #define WORD_LENGTH 256
+#define P_MOD_SIZE 1024
 
 /* Perform stage 1:
  *
@@ -17,36 +18,44 @@
  * - write the ciphertext c to stdout.
  */
 
-typedef struct {
-    mpz_t N;
-    mpz_t e;
-    mpz_t m;
-} RSA_public_key;
+void init_RSA_pk(RSA_public_key **pk) {
+	*pk = (RSA_public_key*) malloc(sizeof(RSA_public_key));
+    mpz_init((*pk)->N);
+    mpz_init((*pk)->e);
+    mpz_init((*pk)->m);
+}
 
-typedef struct {
-    mpz_t N;
-    mpz_t d;
-    mpz_t p, q;
-    mpz_t d_p, d_q;
-    mpz_t i_p, i_q;
-    mpz_t c;
-} RSA_private_key;
+void init_RSA_sk(RSA_private_key **sk) {
+	*sk = (RSA_private_key*) malloc(sizeof(RSA_private_key));
+    mpz_init((*sk)->N);
+    mpz_init((*sk)->d);
+    mpz_init((*sk)->p);
+    mpz_init((*sk)->q);
+    mpz_init((*sk)->d_p);
+    mpz_init((*sk)->d_q);
+    mpz_init((*sk)->i_p);
+    mpz_init((*sk)->i_q);
+    mpz_init((*sk)->c);
+}
 
-typedef struct {
-    mpz_t p;
-    mpz_t q;
-    mpz_t g;
-    mpz_t h;
-    mpz_t m;
-} ElGamal_public_key;
+void init_ElGamal_pk(ElGamal_public_key **pk) {
+	*pk = (ElGamal_public_key*) malloc(sizeof(ElGamal_public_key));
+    mpz_init((*pk)->p);
+    mpz_init((*pk)->q);
+    mpz_init((*pk)->g);
+    mpz_init((*pk)->h);
+    mpz_init((*pk)->m);
+}
 
-typedef struct {
-    mpz_t p;
-    mpz_t q;
-    mpz_t g;
-    mpz_t x;
-    mpz_t c1, c2;
-} ElGamal_private_key;
+void init_ElGamal_sk(ElGamal_private_key **sk) {
+	*sk = (ElGamal_private_key*) malloc(sizeof(ElGamal_private_key));
+    mpz_init((*sk)->p);
+    mpz_init((*sk)->q);
+    mpz_init((*sk)->g);
+    mpz_init((*sk)->x);
+    mpz_init((*sk)->c1);
+    mpz_init((*sk)->c2);
+}
 
 int hexToInt(char ch) {
     if (ch >= '0' && ch <= '9')
@@ -65,12 +74,10 @@ char intToHex(int n) {
     return n + '0';
 }
 
-
 char* intToStr(mpz_t num) {
     int loc =0;
     char* str = malloc((WORD_LENGTH)*sizeof(char));
-    mpz_t pow;
-    mpz_t quot;
+    mpz_t pow, quot;
     mpz_init(pow);
     mpz_init(quot);
 
@@ -100,11 +107,11 @@ char* intToStr(mpz_t num) {
 
 void strToInt(mpz_t num, char* str) {
     int pow = 0;
+    int n = strcspn(str, "\n\r");
+    str[n] = 0;
     mpz_t tmp;
     mpz_init(num);
     mpz_init(tmp);
-    int n = strcspn(str, "\n\r");
-    str[n] = 0;
 
     for (int i=(n - 1); i >= 0; i--) {
         mpz_ui_pow_ui(tmp, BASE, pow);
@@ -135,6 +142,30 @@ int readGroup(int size, mpz_t field[size]) {
     return 0;
 }
 
+int genRandomKey(mpz_t k, const size_t size) {
+	char* dat = (char*) malloc(sizeof(char)*size);
+
+    int file = open("/dev/random", O_RDONLY);
+    if (file < 0) {
+        fprintf(stderr, "ERROR: something went wrong opening /dev/random");
+        return -1;
+    }
+
+	if (read(file, dat, size) < 0) {
+        fprintf(stderr, "ERROR: something went wrong reading /dev/random");
+        return -1;
+    }
+
+    if (close(file) < 0) {
+        fprintf(stderr, "ERROR: something went wrong closing /dev/random");
+        return -1;
+    }
+
+	mpz_import(k, size, 1, sizeof(char), 0, 0, dat);
+
+    return 0;
+}
+
 // N, e, m
 void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
     mpz_init(cipher);
@@ -158,13 +189,20 @@ void RSADecrypt(RSA_private_key *sk, mpz_t message) {
 }
 
 void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2) {
-    // Make random k
-    int k = 1;
+    mpz_init(pk->k);
+    if (genRandomKey(pk->k, P_MOD_SIZE) < 0) {
+        return;
+    }
+    mpz_mod(pk->k, pk->k, pk->p);
+
+    //Enable for testing
+    //mpz_set_ui(pk->k, 1);
+
     mpz_init(c1);
     mpz_init(c2);
 
-    mpz_powm_ui(c1, pk->g, k, pk->p);
-    mpz_pow_ui(c2, pk->h, k);
+    mpz_powm_sec(c1, pk->g, pk->k, pk->p);
+    mpz_powm_sec(c2, pk->h, pk->k, pk->p);
     mpz_mul(c2, c2, pk->m);
     mpz_mod(c2, c2, pk->p);
 }
@@ -189,16 +227,14 @@ void stage1() {
 
     while(readGroup(exp_size, fields) != -1) {
         mpz_t cipher;
-        RSA_public_key pk;
-        mpz_init(pk.N);
-        mpz_init(pk.e);
-        mpz_init(pk.m);
+        RSA_public_key *pk;
+        init_RSA_pk(&pk);
 
-        mpz_set(pk.N, fields[0]);
-        mpz_set(pk.e, fields[1]);
-        mpz_set(pk.m, fields[2]);
+        mpz_set(pk->N, fields[0]);
+        mpz_set(pk->e, fields[1]);
+        mpz_set(pk->m, fields[2]);
 
-        RSAEncrypt(&pk, cipher);
+        RSAEncrypt(pk, cipher);
 
         char* out = intToStr(cipher);
         fprintf( stdout, "%s\n", out);
@@ -215,28 +251,20 @@ void stage2() {
 
     while(readGroup(exp_size, fields) != -1) {
         mpz_t message;
-        RSA_private_key sk;
-        mpz_init(sk.N);
-        mpz_init(sk.d);
-        mpz_init(sk.p);
-        mpz_init(sk.q);
-        mpz_init(sk.d_p);
-        mpz_init(sk.d_q);
-        mpz_init(sk.i_p);
-        mpz_init(sk.i_q);
-        mpz_init(sk.c);
+        RSA_private_key *sk;
+        init_RSA_sk(&sk);
 
-        mpz_set(sk.N, fields[0]);
-        mpz_set(sk.d, fields[1]);
-        mpz_set(sk.p, fields[2]);
-        mpz_set(sk.q, fields[3]);
-        mpz_set(sk.d_p, fields[4]);
-        mpz_set(sk.d_q, fields[5]);
-        mpz_set(sk.i_p, fields[6]);
-        mpz_set(sk.i_q, fields[7]);
-        mpz_set(sk.c, fields[8]);
+        mpz_set(sk->N, fields[0]);
+        mpz_set(sk->d, fields[1]);
+        mpz_set(sk->p, fields[2]);
+        mpz_set(sk->q, fields[3]);
+        mpz_set(sk->d_p, fields[4]);
+        mpz_set(sk->d_q, fields[5]);
+        mpz_set(sk->i_p, fields[6]);
+        mpz_set(sk->i_q, fields[7]);
+        mpz_set(sk->c, fields[8]);
 
-        RSADecrypt(&sk, message);
+        RSADecrypt(sk, message);
 
         char* out = intToStr(message);
 
@@ -253,22 +281,17 @@ void stage3() {
     }
 
     while(readGroup(exp_size, fields) != -1) {
-        mpz_t c1;
-        mpz_t c2;
-        ElGamal_public_key pk;
-        mpz_init(pk.p);
-        mpz_init(pk.q);
-        mpz_init(pk.g);
-        mpz_init(pk.h);
-        mpz_init(pk.m);
+        mpz_t c1, c2;
+        ElGamal_public_key *pk;
+        init_ElGamal_pk(&pk);
 
-        mpz_set(pk.p, fields[0]);
-        mpz_set(pk.q, fields[1]);
-        mpz_set(pk.g, fields[2]);
-        mpz_set(pk.h, fields[3]);
-        mpz_set(pk.m, fields[4]);
+        mpz_set(pk->p, fields[0]);
+        mpz_set(pk->q, fields[1]);
+        mpz_set(pk->g, fields[2]);
+        mpz_set(pk->h, fields[3]);
+        mpz_set(pk->m, fields[4]);
 
-        ElGamalEncrypt(&pk, c1, c2);
+        ElGamalEncrypt(pk, c1, c2);
 
         char* out1 = intToStr(c1);
         char* out2 = intToStr(c2);
@@ -287,22 +310,17 @@ void stage4() {
 
     while(readGroup(exp_size, fields) != -1) {
         mpz_t message;
-        ElGamal_private_key sk;
-        mpz_init(sk.p);
-        mpz_init(sk.q);
-        mpz_init(sk.g);
-        mpz_init(sk.x);
-        mpz_init(sk.c1);
-        mpz_init(sk.c2);
+        ElGamal_private_key *sk;
+        init_ElGamal_sk(&sk);
 
-        mpz_set(sk.p, fields[0]);
-        mpz_set(sk.q, fields[1]);
-        mpz_set(sk.g, fields[2]);
-        mpz_set(sk.x, fields[3]);
-        mpz_set(sk.c1, fields[4]);
-        mpz_set(sk.c2, fields[5]);
+        mpz_set(sk->p, fields[0]);
+        mpz_set(sk->q, fields[1]);
+        mpz_set(sk->g, fields[2]);
+        mpz_set(sk->x, fields[3]);
+        mpz_set(sk->c1, fields[4]);
+        mpz_set(sk->c2, fields[5]);
 
-        ElGamalDecryption(&sk, message);
+        ElGamalDecryption(sk, message);
 
         char* out = intToStr(message);
         fprintf( stdout, "%s\n", out);
