@@ -103,9 +103,10 @@ void strToInt(mpz_t num, char* str) {
     mpz_t tmp;
     mpz_init(num);
     mpz_init(tmp);
-    str[strcspn(str, "\n\r")] = 0;
+    int n = strcspn(str, "\n\r");
+    str[n] = 0;
 
-    for (int i=(WORD_LENGTH - 1); i >= 0; i--) {
+    for (int i=(n - 1); i >= 0; i--) {
         mpz_ui_pow_ui(tmp, BASE, pow);
         mpz_mul_si(tmp, tmp, hexToInt(str[i]));
         mpz_add(num, num, tmp);
@@ -118,11 +119,11 @@ int readGroup(int size, mpz_t field[size]) {
 
     for (int i=0; i < size; i++) {
         char* line = NULL;
-        unsigned long n = 100;
+        size_t n = 1024;
 
         if (getline(&line, &n, stdin) == -1) {
             if (i != 0) {
-                fprintf( stderr, "ERROR: epected %d further fields\n", size - i);
+                fprintf( stderr, "ERROR: expected %d further fields (total %d)\n", size - i, size);
                 exit(1);
             }
             return -1;
@@ -189,7 +190,6 @@ void stage1() {
         RSAEncrypt(&pk, cipher);
 
         char* out = intToStr(cipher);
-
         fprintf( stdout, "%s\n", out);
     }
 }
