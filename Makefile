@@ -1,15 +1,21 @@
-# Copyright (C) 2017 Daniel Page <csdsp@bristol.ac.uk>
-#
-# Use of this source code is restricted per the CC BY-NC-ND license, a copy of
-# which can be found via http://creativecommons.org (and should be included as
-# LICENSE.txt within the associated archive or repository).
+help:
+	# all:   build and run tests
+	# build: build file
+	# check: run tests
+	# clean: clean build
 
-modmul : $(wildcard *.[ch])
-	@gcc -Wall -std=gnu99 -O3 -o ${@} $(filter %.c, ${^}) -lgmp
+all: build check
 
-.DEFAULT_GOAL = all
+build:
+	gcc -Wall -std=gnu99 -O3 -o modmul -lgmp modmul.c
 
-all   : modmul
+check:
+	for number in 1 2 3 4 ; do \
+		./modmul stage$$number < stage$$number.input > foo; \
+		cmp stage$$number.output foo || echo "stage $$number failed"; \
+	done
+	rm -f foo
 
-clean :
-	@rm -f core modmul
+
+clean:
+	rm -f core modmul foo

@@ -11,13 +11,6 @@
 #define WORD_LENGTH 256
 #define P_MOD_SIZE 1024
 
-/* Perform stage 1:
- *
- * - read each 3-tuple of N, e and m from stdin,
- * - compute the RSA encryption c, then
- * - write the ciphertext c to stdout.
- */
-
 void init_RSA_pk(RSA_public_key **pk) {
 	*pk = (RSA_public_key*) malloc(sizeof(RSA_public_key));
     mpz_init((*pk)->N);
@@ -190,13 +183,14 @@ void RSADecrypt(RSA_private_key *sk, mpz_t message) {
 
 void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2) {
     mpz_init(pk->k);
-    if (genRandomKey(pk->k, P_MOD_SIZE) < 0) {
-        return;
-    }
-    mpz_mod(pk->k, pk->k, pk->p);
+    //Enable for random generation
+    //if (genRandomKey(pk->k, P_MOD_SIZE) < 0) {
+    //    return;
+    //}
+    //mpz_mod(pk->k, pk->k, pk->p);
 
     //Enable for testing
-    //mpz_set_ui(pk->k, 1);
+    mpz_set_ui(pk->k, 1);
 
     mpz_init(c1);
     mpz_init(c2);
@@ -248,6 +242,7 @@ void stage2() {
     for (int i=0; i < exp_size; i++) {
         mpz_init(fields[i]);
     }
+
 
     while(readGroup(exp_size, fields) != -1) {
         mpz_t message;
@@ -332,25 +327,59 @@ void stage4() {
  */
 
 int main( int argc, char* argv[] ) {
-  if( 2 != argc ) {
-    abort();
-  }
+    limb_t x[2];
+    limb_t y[2];
+    limb_t foo[2];
 
-  if     ( !strcmp( argv[ 1 ], "stage1" ) ) {
-    stage1();
-  }
-  else if( !strcmp( argv[ 1 ], "stage2" ) ) {
-    stage2();
-  }
-  else if( !strcmp( argv[ 1 ], "stage3" ) ) {
-    stage3();
-  }
-  else if( !strcmp( argv[ 1 ], "stage4" ) ) {
-    stage4();
-  }
-  else {
-    abort();
-  }
+    //for (int i=0; i<10; i++) {
+    //    x[i] = 4294967295;
+    //    y[i] = 4294967295;
+    //    foo[i] = 10000;
+    //}
+    //x[9] =0;
+    //y[9] =0;
+    x[0] = 1;
+    x[1] = 0;
+    y[0] = 1;
+    y[1] = 0;
+    foo[0] = 0;
+    foo[1] = 0;
+    //limb_t c = 0;
+    //limb_t x[2];
+    //x[0] = 4294967295;
+
+    //LIMB_ADD1(c, foo[0], x[0], 10, c);
+    //fprintf(stdout, "%d\n", foo[0]);
+    //fprintf(stdout, "%d\n", c);
+
+    limb_t c = limb_add(foo, x, 2, y, 2);
+    for (int i=0; i<2; i++) {
+        fprintf(stdout, "%d\n", foo[i]);
+    }
+    fprintf(stdout, "\n");
+    fprintf(stdout, "%d\n", c);
+
+
+
+  //if( 2 != argc ) {
+  //  abort();
+  //}
+
+  //if     ( !strcmp( argv[ 1 ], "stage1" ) ) {
+  //  stage1();
+  //}
+  //else if( !strcmp( argv[ 1 ], "stage2" ) ) {
+  //  stage2();
+  //}
+  //else if( !strcmp( argv[ 1 ], "stage3" ) ) {
+  //  stage3();
+  //}
+  //else if( !strcmp( argv[ 1 ], "stage4" ) ) {
+  //  stage4();
+  //}
+  //else {
+  //  abort();
+  //}
 
   return 0;
 }
