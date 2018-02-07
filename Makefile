@@ -7,7 +7,7 @@ help:
 all: build check
 
 build:
-	gcc -Wall -std=gnu99 -O3 -o modmul -lgmp modmul.c
+	gcc -Wall -std=gnu99 -O3 -o modmul -lgmp -lm modmul.c
 
 check:
 	for number in 1 2 3 4 ; do \

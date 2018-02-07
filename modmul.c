@@ -68,28 +68,6 @@ char intToHex(int n) {
 }
 
 
-//mpz_t pow, quot;
-//mpz_init(pow);
-//mpz_init(quot);
-//
-//for(int i=(WORD_LENGTH - 1); i>= 0; i--) {
-//    mpz_ui_pow_ui(pow, BASE, i);
-//
-//    if (mpz_cmp(num, pow) < 0) {
-//        str[loc] = '0';
-//
-//    } else {
-//        mpz_tdiv_q(quot, num, pow);
-//        mpz_mod(num, num, pow);
-//
-//        int lquote = mpz_get_ui(quot);
-//
-//        char c = intToHex(lquote);
-//        str[loc] = c;
-//    }
-//    loc++;
-//}
-
 char* zToStr(my_num_t* num) {
     int loc =0;
     char* str = malloc((WORD_LENGTH)*sizeof(char));
@@ -113,7 +91,6 @@ char* zToStr(my_num_t* num) {
 
     char * out = str;
     while (*out=='0') out++;
-
     return out;
 }
 
@@ -122,7 +99,7 @@ void strToZ(my_num_t* num, char* str) {
     str[n] = 0;
 
     myn_init(num);
-    my_num_t *tmp = malloc(sizeof(my_num_t));
+    my_num_t *tmp = malloc (sizeof(my_num_t));
     myn_init(tmp);
     int power = 0;
 
@@ -148,6 +125,9 @@ int readGroup(int size, my_num_t field[size]) {
         }
 
         strToZ(&field[i], line);
+        //for (int j=field[i].l-1; j>=0; j--) {
+        //    fprintf(stderr, ">%d\n", field[i].d[j]);
+        //}
     }
 
     return 0;
@@ -178,10 +158,10 @@ int genRandomKey(mpz_t k, const size_t size) {
 }
 
 // N, e, m
-//void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
-//    mpz_init(cipher);
-//    mpz_powm(cipher, pk->m, pk->e, pk->N);
-//}
+void RSAEncrypt(RSA_public_key *pk, my_num_t *cipher) {
+    myn_init(cipher);
+    myn_powm(cipher, &pk->m, &pk->e, &pk->N);
+}
 
 //Uses CRT with Garner's formula
 void RSADecrypt(RSA_private_key *sk, mpz_t message) {
@@ -239,24 +219,22 @@ void stage1() {
 
     while(readGroup(exp_size, fields) != -1) {
         //my_num_t cipher;
-        RSA_public_key pk;
-        init_RSA_pk(&pk);
+        //RSA_public_key *pk = malloc(sizeof(RSA_public_key));
+        //init_RSA_pk(pk);
 
-        fflush(stdout);
-        char* out = zToStr(&fields[0]);
-        fprintf(stdout, "%s\n", out);
-        //out = zToStr(&fields[1]);
-        //fprintf(stdout, "%s\n\n", out);
-        //out = zToStr(&fields[2]);
-        //fprintf(stdout, "%s\n\n", out);
+        //myn_set(&pk->N, &fields[0]);
+        //myn_set(&pk->e, &fields[1]);
+        //myn_set(&pk->m, &fields[2]);
 
-        //mpz_set(pk->N, fields[0]);
-        //mpz_set(pk->e, fields[1]);
-        //mpz_set(pk->m, fields[2]);
+        //RSAEncrypt(pk, &cipher);
 
-        //RSAEncrypt(pk, cipher);
+        //char out[256];
+        //for (int i=0; i<256; i++)
+        //    out[i] = 0;
 
-        //char* out = zToStr(cipher);
+
+
+        //char* out = zToStr(&cipher);
         //fprintf( stdout, "%s\n", out);
     }
 }
@@ -352,182 +330,18 @@ void stage1() {
  * correct function for the requested stage.
  */
 
-void results(my_num_t *n, char* name) {
-    fprintf(stderr, "Results: %s->l: %d, %s->d[1]: %u, %s->d[0]: %u\n", name, n->l, name, n->d[1], name, n->d[0]);
-}
-
-int test() {
-    int fail = 0;
-
-    my_num_t *x = malloc(sizeof(my_num_t));
-    my_num_t *y = malloc(sizeof(my_num_t));
-    myn_init(x);
-    myn_init(y);
-
-    myn_set_ui(x, 10);
-    if (x->d[0] != 10) {
-        fail += 1;
-    }
-
-    myn_add(x, x, y);
-    if (x->d[0] != 10 || y->d[0] != 0) {
-        results(x, "x");
-        results(y, "y");
-        fail += 1;
-    }
-
-    myn_set_ui(y, 10);
-    if (y->d[0] != 10) {
-        results(y, "y");
-        fail += 1;
-    }
-
-    myn_add(x, x, y);
-    if (x->d[0] != 20 || y->d[0] != 10) {
-        results(x, "x");
-        results(y, "y");
-        fail += 1;
-    }
-    for (int i=x->l-1; i>0; i--) {
-        if (x->d[i] != 0) {
-            results(x, "x");
-            fail += 1;
-        }
-    }
-
-    myn_mul_ui(x, x, 10);
-    if (x->d[0] != 200) {
-        results(x, "x");
-        fail += 1;
-    }
-    for (int i=31; i>0; i--) {
-        if (x->d[i] != 0) {
-            results(x, "x");
-            fail += 1;
-        }
-    }
-
-    x->d[1] = 200;
-    x->l = 2;
-    myn_mul_ui(x, x, 10);
-    if (x->d[0] != 2000 || x->d[1] != 2000) {
-        results(x, "x");
-        fail += 1;
-    }
-    for (int i=31; i>1; i--) {
-        if (x->d[i] != 0) {
-            results(x, "x");
-            fail += 1;
-        }
-    }
-
-    myn_ui_pow_ui(x, 2, 2);
-    if (x->d[0] != 4) {
-        results(x, "x");
-        fail += 1;
-    }
-    for (int i=31; i>0; i--) {
-        if (x->d[i] != 0) {
-            results(x, "x");
-            fail += 1;
-        }
-    }
-
-    myn_ui_pow_ui(x, 2, 31);
-    if (x->l != 1 ) {
-        results(x, "x");
-        fail += 1;
-    }
-    myn_ui_pow_ui(x, 2, 32);
-    if (x->l != 2 || x->d[0] != 0 || x->d[1] != 1) {
-        results(x, "x");
-        fail += 1;
-    }
-
-    myn_init(x);
-    myn_init(y);
-    myn_set_ui(x, 10);
-    myn_set_ui(y, 7);
-    int quote = myn_mod_quote(x, y);
-    if (x->l != 1 || x->d[0] != 3 || quote != 1 ) {
-        results(x, "x");
-        fail += 1;
-    }
-
-    myn_init(x);
-    myn_init(y);
-    myn_ui_pow_ui(x, 2, 32);
-
-    myn_set_ui(y, 1);
-
-    myn_add(x, x, y);
-    if (x->l != 2 || x->d[0] != 1 || x->d[1] != 1 ) {
-        results(x, "x");
-        results(y, "y");
-        fail += 1;
-    }
-    myn_ui_pow_ui(y, 2, 32);
-    quote = myn_mod_quote(x, y);
-    if (x->l != 1 || x->d[0] != 1 || quote != 1 ) {
-        results(x, "x");
-        fail += 1;
-    }
-
-    myn_init(x);
-    myn_init(y);
-    myn_set_ui(x, 5);
-    myn_set_ui(y, 4);
-    if( myn_cmp(x, y) != 1) {
-        fail += 1;
-    }
-    myn_set_ui(x, 3);
-    if( myn_cmp(x, y) != -1) {
-        fail += 1;
-    }
-    myn_set_ui(x, 4);
-    if( myn_cmp(x, y) != 0) {
-        fail += 1;
-    }
-
-    myn_init(x);
-    myn_init(y);
-    myn_ui_pow_ui(x, 2, 32);
-    myn_set_ui(y, 100);
-    myn_sub(x, x, y);
-    if(x->l != 1 || x->d[0] != (UINT32_MAX-100) || y->l != 1 || y->d[0] != 100) {
-        results(x, "x");
-        results(y, "y");
-        fail += 1;
-    }
-
-    myn_init(x);
-    myn_init(y);
-    x->l = 3;
-    x->d[2] = 1;
-    myn_set_ui(y, 1);
-    myn_sub(x, x, y);
-    if (x->l != 2) fail += 1;
-    if (x->d[2] != 0) fail += 1;
-    for (int i=1; i>=0; i--) {
-        if (x->d[i] != UINT32_MAX-1) {
-            fail += 1;
-            break;
-        }
-    }
-
-    return fail;
-}
-
 int main( int argc, char* argv[] ) {
 
 
-    // YOU NEED TO SUBTRACT MORE! //
-    int fail = test();
-    if (fail > 0) {
-        fprintf(stderr, "[%d] TESTS FAILED.\n", fail);
-        return 1;
+    if ( !strcmp( argv[ 1 ], "test" ) ) {
+        int fail = test();
+        if (fail > 0) {
+            fprintf(stderr, "[%d] TESTS FAILED.\n", fail);
+            return 1;
+        }
+        fprintf(stdout, "ALL TESTS PASSED.\n");
+        return 0;
     }
-    fprintf(stdout, "ALL TESTS PASSED.\n");
 
     if( 2 != argc ) {
         fprintf(stderr, "Expected 2 args; got %d\n", argc);
@@ -547,9 +361,10 @@ int main( int argc, char* argv[] ) {
     //else if( !strcmp( argv[ 1 ], "stage4" ) ) {
     //  stage4();
     //}
-    //else {
-    //  abort();
-    //}
+    else {
+        fprintf(stderr, "ERROR: Unknown stage '%s'\n", argv[1]);
+        return 1;
+    }
 
     return 0;
 }
