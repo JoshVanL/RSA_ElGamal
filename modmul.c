@@ -11,11 +11,11 @@
 #define WORD_LENGTH 256
 #define P_MOD_SIZE 1024
 
-void init_RSA_pk(RSA_public_key **pk) {
-	*pk = (RSA_public_key*) malloc(sizeof(RSA_public_key));
-    mpz_init((*pk)->N);
-    mpz_init((*pk)->e);
-    mpz_init((*pk)->m);
+void init_RSA_pk(RSA_public_key* const pk) {
+	//*pk = (RSA_public_key*) malloc(sizeof(RSA_public_key));
+    myn_init(&(pk->N));
+    myn_init(&(pk->e));
+    myn_init(&(pk->m));
 }
 
 void init_RSA_sk(RSA_private_key **sk) {
@@ -67,24 +67,44 @@ char intToHex(int n) {
     return n + '0';
 }
 
-char* intToStr(mpz_t num) {
+
+//mpz_t pow, quot;
+//mpz_init(pow);
+//mpz_init(quot);
+//
+//for(int i=(WORD_LENGTH - 1); i>= 0; i--) {
+//    mpz_ui_pow_ui(pow, BASE, i);
+//
+//    if (mpz_cmp(num, pow) < 0) {
+//        str[loc] = '0';
+//
+//    } else {
+//        mpz_tdiv_q(quot, num, pow);
+//        mpz_mod(num, num, pow);
+//
+//        int lquote = mpz_get_ui(quot);
+//
+//        char c = intToHex(lquote);
+//        str[loc] = c;
+//    }
+//    loc++;
+//}
+
+char* zToStr(my_num_t* num) {
     int loc =0;
     char* str = malloc((WORD_LENGTH)*sizeof(char));
-    mpz_t pow, quot;
-    mpz_init(pow);
-    mpz_init(quot);
+    my_num_t *power = malloc(sizeof(my_num_t));
 
     for(int i=(WORD_LENGTH - 1); i>= 0; i--) {
-        mpz_ui_pow_ui(pow, BASE, i);
+        myn_init(power);
+        myn_ui_pow_ui(power, BASE, i);
 
-        if (mpz_cmp(num, pow) < 0) {
+        if (myn_cmp(num, power) < 0) {
             str[loc] = '0';
 
         } else {
-            mpz_tdiv_q(quot, num, pow);
-            mpz_mod(num, num, pow);
-
-            int lquote = mpz_get_ui(quot);
+            int lquote = myn_mod_quote(num, power);
+            fprintf(stderr, "%d-", lquote);
 
             char c = intToHex(lquote);
             str[loc] = c;
@@ -92,31 +112,31 @@ char* intToStr(mpz_t num) {
         loc++;
     }
 
+    fprintf(stderr, "\n");
     char * out = str;
     while (*out=='0') out++;
 
     return out;
 }
 
-void strToInt(mpz_t num, char* str) {
-    int pow = 0;
+void strToZ(my_num_t* num, char* str) {
     int n = strcspn(str, "\n\r");
     str[n] = 0;
-    mpz_t tmp;
-    mpz_init(num);
-    mpz_init(tmp);
+
+    myn_init(num);
+    my_num_t *tmp = malloc(sizeof(my_num_t));
+    myn_init(tmp);
+    int power = 0;
 
     for (int i=(n - 1); i >= 0; i--) {
-        mpz_ui_pow_ui(tmp, BASE, pow);
-        mpz_mul_si(tmp, tmp, hexToInt(str[i]));
-        mpz_add(num, num, tmp);
-        mpz_init(tmp);
-        pow++;
+        myn_ui_pow_ui(tmp, BASE, power);
+        myn_mul_ui(tmp, tmp, hexToInt(str[i]));
+        myn_add(num, num, tmp);
+        power++;
     }
 }
 
-int readGroup(int size, mpz_t field[size]) {
-
+int readGroup(int size, my_num_t field[size]) {
     for (int i=0; i < size; i++) {
         char* line = NULL;
         size_t n = 1024;
@@ -129,7 +149,7 @@ int readGroup(int size, mpz_t field[size]) {
             return -1;
         }
 
-        strToInt(field[i], line);
+        strToZ(&field[i], line);
     }
 
     return 0;
@@ -160,10 +180,10 @@ int genRandomKey(mpz_t k, const size_t size) {
 }
 
 // N, e, m
-void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
-    mpz_init(cipher);
-    mpz_powm(cipher, pk->m, pk->e, pk->N);
-}
+//void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
+//    mpz_init(cipher);
+//    mpz_powm(cipher, pk->m, pk->e, pk->N);
+//}
 
 //Uses CRT with Garner's formula
 void RSADecrypt(RSA_private_key *sk, mpz_t message) {
@@ -214,160 +234,296 @@ void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
 void stage1() {
     const int exp_size = 3;
 
-    mpz_t fields[exp_size];
+    my_num_t fields[exp_size];
     for (int i=0; i < exp_size; i++) {
-        mpz_init(fields[i]);
+        myn_init(&fields[i]);
     }
 
     while(readGroup(exp_size, fields) != -1) {
-        mpz_t cipher;
-        RSA_public_key *pk;
+        //my_num_t cipher;
+        RSA_public_key pk;
         init_RSA_pk(&pk);
 
-        mpz_set(pk->N, fields[0]);
-        mpz_set(pk->e, fields[1]);
-        mpz_set(pk->m, fields[2]);
+        fflush(stdout);
+        char* out = zToStr(&fields[0]);
+        fprintf(stdout, "%s\n\n", out);
+        //out = zToStr(&fields[1]);
+        //fprintf(stdout, "%s\n\n", out);
+        //out = zToStr(&fields[2]);
+        //fprintf(stdout, "%s\n\n", out);
 
-        RSAEncrypt(pk, cipher);
+        //mpz_set(pk->N, fields[0]);
+        //mpz_set(pk->e, fields[1]);
+        //mpz_set(pk->m, fields[2]);
 
-        char* out = intToStr(cipher);
-        fprintf( stdout, "%s\n", out);
+        //RSAEncrypt(pk, cipher);
+
+        //char* out = zToStr(cipher);
+        //fprintf( stdout, "%s\n", out);
     }
 }
 
-void stage2() {
-    const int exp_size = 9;
-
-    mpz_t fields[exp_size];
-    for (int i=0; i < exp_size; i++) {
-        mpz_init(fields[i]);
-    }
-
-
-    while(readGroup(exp_size, fields) != -1) {
-        mpz_t message;
-        RSA_private_key *sk;
-        init_RSA_sk(&sk);
-
-        mpz_set(sk->N, fields[0]);
-        mpz_set(sk->d, fields[1]);
-        mpz_set(sk->p, fields[2]);
-        mpz_set(sk->q, fields[3]);
-        mpz_set(sk->d_p, fields[4]);
-        mpz_set(sk->d_q, fields[5]);
-        mpz_set(sk->i_p, fields[6]);
-        mpz_set(sk->i_q, fields[7]);
-        mpz_set(sk->c, fields[8]);
-
-        RSADecrypt(sk, message);
-
-        char* out = intToStr(message);
-
-        fprintf( stdout, "%s\n", out);
-    }
-}
-
-void stage3() {
-    const int exp_size = 5;
-
-    mpz_t fields[exp_size];
-    for (int i=0; i < exp_size; i++) {
-        mpz_init(fields[i]);
-    }
-
-    while(readGroup(exp_size, fields) != -1) {
-        mpz_t c1, c2;
-        ElGamal_public_key *pk;
-        init_ElGamal_pk(&pk);
-
-        mpz_set(pk->p, fields[0]);
-        mpz_set(pk->q, fields[1]);
-        mpz_set(pk->g, fields[2]);
-        mpz_set(pk->h, fields[3]);
-        mpz_set(pk->m, fields[4]);
-
-        ElGamalEncrypt(pk, c1, c2);
-
-        char* out1 = intToStr(c1);
-        char* out2 = intToStr(c2);
-        fprintf( stdout, "%s\n", out1);
-        fprintf( stdout, "%s\n", out2);
-    }
-}
-
-void stage4() {
-    const int exp_size = 6;
-
-    mpz_t fields[exp_size];
-    for (int i=0; i < exp_size; i++) {
-        mpz_init(fields[i]);
-    }
-
-    while(readGroup(exp_size, fields) != -1) {
-        mpz_t message;
-        ElGamal_private_key *sk;
-        init_ElGamal_sk(&sk);
-
-        mpz_set(sk->p, fields[0]);
-        mpz_set(sk->q, fields[1]);
-        mpz_set(sk->g, fields[2]);
-        mpz_set(sk->x, fields[3]);
-        mpz_set(sk->c1, fields[4]);
-        mpz_set(sk->c2, fields[5]);
-
-        ElGamalDecryption(sk, message);
-
-        char* out = intToStr(message);
-        fprintf( stdout, "%s\n", out);
-    }
-}
+//void stage2() {
+//    const int exp_size = 9;
+//
+//    mpz_t fields[exp_size];
+//    for (int i=0; i < exp_size; i++) {
+//        mpz_init(fields[i]);
+//    }
+//
+//
+//    while(readGroup(exp_size, fields) != -1) {
+//        mpz_t message;
+//        RSA_private_key *sk;
+//        init_RSA_sk(&sk);
+//
+//        mpz_set(sk->N, fields[0]);
+//        mpz_set(sk->d, fields[1]);
+//        mpz_set(sk->p, fields[2]);
+//        mpz_set(sk->q, fields[3]);
+//        mpz_set(sk->d_p, fields[4]);
+//        mpz_set(sk->d_q, fields[5]);
+//        mpz_set(sk->i_p, fields[6]);
+//        mpz_set(sk->i_q, fields[7]);
+//        mpz_set(sk->c, fields[8]);
+//
+//        RSADecrypt(sk, message);
+//
+//        char* out = zToStr(message);
+//
+//        fprintf( stdout, "%s\n", out);
+//    }
+//}
+//
+//void stage3() {
+//    const int exp_size = 5;
+//
+//    mpz_t fields[exp_size];
+//    for (int i=0; i < exp_size; i++) {
+//        mpz_init(fields[i]);
+//    }
+//
+//    while(readGroup(exp_size, fields) != -1) {
+//        mpz_t c1, c2;
+//        ElGamal_public_key *pk;
+//        init_ElGamal_pk(&pk);
+//
+//        mpz_set(pk->p, fields[0]);
+//        mpz_set(pk->q, fields[1]);
+//        mpz_set(pk->g, fields[2]);
+//        mpz_set(pk->h, fields[3]);
+//        mpz_set(pk->m, fields[4]);
+//
+//        ElGamalEncrypt(pk, c1, c2);
+//
+//        char* out1 = zToStr(c1);
+//        char* out2 = zToStr(c2);
+//        fprintf( stdout, "%s\n", out1);
+//        fprintf( stdout, "%s\n", out2);
+//    }
+//}
+//
+//void stage4() {
+//    const int exp_size = 6;
+//
+//    mpz_t fields[exp_size];
+//    for (int i=0; i < exp_size; i++) {
+//        mpz_init(fields[i]);
+//    }
+//
+//    while(readGroup(exp_size, fields) != -1) {
+//        mpz_t message;
+//        ElGamal_private_key *sk;
+//        init_ElGamal_sk(&sk);
+//
+//        mpz_set(sk->p, fields[0]);
+//        mpz_set(sk->q, fields[1]);
+//        mpz_set(sk->g, fields[2]);
+//        mpz_set(sk->x, fields[3]);
+//        mpz_set(sk->c1, fields[4]);
+//        mpz_set(sk->c2, fields[5]);
+//
+//        ElGamalDecryption(sk, message);
+//
+//        char* out = zToStr(message);
+//        fprintf( stdout, "%s\n", out);
+//    }
+//}
 
 /* The main function acts as a driver for the assignment by simply invoking the
  * correct function for the requested stage.
  */
 
-int main( int argc, char* argv[] ) {
-    limb_t x[2];
-    limb_t y[2];
-    limb_t foo[2];
+void results(my_num_t *n, char* name) {
+    fprintf(stderr, "Results: %s->l: %d, %s->d[1]: %u, %s->d[0]: %u\n", name, n->l, name, n->d[1], name, n->d[0]);
+}
 
-    //for (int i=0; i<10; i++) {
-    //    x[i] = 4294967295;
-    //    y[i] = 4294967295;
-    //    foo[i] = 10000;
-    //}
-    //x[9] =0;
-    //y[9] =0;
-    x[0] = 1;
-    x[1] = 0;
-    y[0] = 1;
-    y[1] = 0;
-    foo[0] = 0;
-    foo[1] = 0;
-    //limb_t c = 0;
-    //limb_t x[2];
-    //x[0] = 4294967295;
+int test() {
+    my_num_t *x = malloc(sizeof(my_num_t));
+    my_num_t *y = malloc(sizeof(my_num_t));
+    myn_init(x);
+    myn_init(y);
 
-    //LIMB_ADD1(c, foo[0], x[0], 10, c);
-    //fprintf(stdout, "%d\n", foo[0]);
-    //fprintf(stdout, "%d\n", c);
-
-    limb_t c = limb_add(foo, x, 2, y, 2);
-    for (int i=0; i<2; i++) {
-        fprintf(stdout, "%d\n", foo[i]);
+    myn_set_ui(x, 10);
+    if (x->d[0] != 10) {
+        return 1;
     }
-    fprintf(stdout, "\n");
-    fprintf(stdout, "%d\n", c);
+
+    myn_add(x, x, y);
+    if (x->d[0] != 10 || y->d[0] != 0) {
+        results(x, "x");
+        results(y, "y");
+        return 2;
+    }
+
+    myn_set_ui(y, 10);
+    if (y->d[0] != 10) {
+        results(y, "y");
+        return 3;
+    }
+
+    myn_add(x, x, y);
+    if (x->d[0] != 20 || y->d[0] != 10) {
+        results(x, "x");
+        results(y, "y");
+        return 4;
+    }
+    for (int i=x->l-1; i>0; i--) {
+        if (x->d[i] != 0) {
+            results(x, "x");
+            return 4;
+        }
+    }
+
+    myn_mul_ui(x, x, 10);
+    if (x->d[0] != 200) {
+        results(x, "x");
+        return 5;
+    }
+    for (int i=31; i>0; i--) {
+        if (x->d[i] != 0) {
+            results(x, "x");
+            return 5;
+        }
+    }
+
+    x->d[1] = 200;
+    x->l = 2;
+    myn_mul_ui(x, x, 10);
+    if (x->d[0] != 2000 || x->d[1] != 2000) {
+        results(x, "x");
+        return 6;
+    }
+    for (int i=31; i>1; i--) {
+        if (x->d[i] != 0) {
+            results(x, "x");
+            return 6;
+        }
+    }
+
+    myn_ui_pow_ui(x, 2, 2);
+    if (x->d[0] != 4) {
+        results(x, "x");
+        return 7;
+    }
+    for (int i=31; i>0; i--) {
+        if (x->d[i] != 0) {
+            results(x, "x");
+            return 7;
+        }
+    }
+
+    myn_ui_pow_ui(x, 2, 31);
+    if (x->l != 1 ) {
+        results(x, "x");
+        return 8;
+    }
+    myn_ui_pow_ui(x, 2, 32);
+    if (x->l != 2 || x->d[0] != 0 || x->d[1] != 1) {
+        results(x, "x");
+        return 8;
+    }
+
+    myn_init(x);
+    myn_init(y);
+    myn_set_ui(x, 10);
+    myn_set_ui(y, 7);
+    int quote = myn_mod_quote(x, y);
+    if (x->l != 1 || x->d[0] != 3 || quote != 1 ) {
+        results(x, "x");
+        return 9;
+    }
+
+    myn_init(x);
+    myn_init(y);
+    myn_ui_pow_ui(x, 2, 32);
+
+    myn_set_ui(y, 1);
+
+    myn_add(x, x, y);
+    if (x->l != 2 || x->d[0] != 1 || x->d[1] != 1 ) {
+        results(x, "x");
+        results(y, "y");
+        return 9;
+    }
+    myn_ui_pow_ui(y, 2, 32);
+    quote = myn_mod_quote(x, y);
+    if (x->l != 1 || x->d[0] != 1 || quote != 1 ) {
+        results(x, "x");
+        return 9;
+    }
+
+    myn_init(x);
+    myn_init(y);
+    myn_set_ui(x, 5);
+    myn_set_ui(y, 4);
+    if( myn_cmp(x, y) != 1) {
+        return 10;
+    }
+    myn_set_ui(x, 3);
+    if( myn_cmp(x, y) != -1) {
+        return 10;
+    }
+    myn_set_ui(x, 4);
+    if( myn_cmp(x, y) != 0) {
+        return 10;
+    }
+
+    myn_init(x);
+    myn_init(y);
+    myn_ui_pow_ui(x, 2, 32);
+    myn_set_ui(y, 100);
+    results(x, "x");
+    results(y, "y");
+    myn_sub(x, x, y);
+    if(x->l != 1 || x->d[0] != (UINT32_MAX-100) || y->l != 1 || y->d[0] != 100) {
+        results(x, "x");
+        results(y, "y");
+        return 11;
+    }
 
 
+    return 0;
+}
 
-  //if( 2 != argc ) {
-  //  abort();
-  //}
+int main( int argc, char* argv[] ) {
 
-  //if     ( !strcmp( argv[ 1 ], "stage1" ) ) {
-  //  stage1();
-  //}
+
+  int fail = test();
+  if (fail > 0) {
+      fprintf(stderr, "FAIL: test %d\n", fail);
+      return 1;
+  }
+
+  if( 2 != argc ) {
+    fprintf(stderr, "Expected 2 args; got %d\n", argc);
+    return 1;
+  }
+
+  if ( !strcmp( argv[ 1 ], "stage1" ) ) {
+    stage1();
+  }
+
   //else if( !strcmp( argv[ 1 ], "stage2" ) ) {
   //  stage2();
   //}
