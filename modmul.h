@@ -289,8 +289,13 @@ void myn_mul_ui(my_num_t* r, my_num_t* x, const unsigned long int y) {
 
 void myn_ui_pow_ui(my_num_t* r, const unsigned long int base, const unsigned long int expoent) {
     myn_init(r);
-    myn_set_ui(r, base);
 
+    if (expoent == 0) {
+        myn_set_ui(r, 1);
+        return;
+    }
+
+    myn_set_ui(r, base);
     for (int i=1; i<expoent; i++) {
         myn_mul_ui(r, r, base);
     }

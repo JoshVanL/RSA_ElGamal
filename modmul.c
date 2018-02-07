@@ -104,7 +104,6 @@ char* zToStr(my_num_t* num) {
 
         } else {
             int lquote = myn_mod_quote(num, power);
-            fprintf(stderr, "%d-", lquote);
 
             char c = intToHex(lquote);
             str[loc] = c;
@@ -112,7 +111,6 @@ char* zToStr(my_num_t* num) {
         loc++;
     }
 
-    fprintf(stderr, "\n");
     char * out = str;
     while (*out=='0') out++;
 
@@ -246,7 +244,7 @@ void stage1() {
 
         fflush(stdout);
         char* out = zToStr(&fields[0]);
-        fprintf(stdout, "%s\n\n", out);
+        fprintf(stdout, "%s\n", out);
         //out = zToStr(&fields[1]);
         //fprintf(stdout, "%s\n\n", out);
         //out = zToStr(&fields[2]);
@@ -359,6 +357,8 @@ void results(my_num_t *n, char* name) {
 }
 
 int test() {
+    int fail = 0;
+
     my_num_t *x = malloc(sizeof(my_num_t));
     my_num_t *y = malloc(sizeof(my_num_t));
     myn_init(x);
@@ -366,44 +366,44 @@ int test() {
 
     myn_set_ui(x, 10);
     if (x->d[0] != 10) {
-        return 1;
+        fail += 1;
     }
 
     myn_add(x, x, y);
     if (x->d[0] != 10 || y->d[0] != 0) {
         results(x, "x");
         results(y, "y");
-        return 2;
+        fail += 1;
     }
 
     myn_set_ui(y, 10);
     if (y->d[0] != 10) {
         results(y, "y");
-        return 3;
+        fail += 1;
     }
 
     myn_add(x, x, y);
     if (x->d[0] != 20 || y->d[0] != 10) {
         results(x, "x");
         results(y, "y");
-        return 4;
+        fail += 1;
     }
     for (int i=x->l-1; i>0; i--) {
         if (x->d[i] != 0) {
             results(x, "x");
-            return 4;
+            fail += 1;
         }
     }
 
     myn_mul_ui(x, x, 10);
     if (x->d[0] != 200) {
         results(x, "x");
-        return 5;
+        fail += 1;
     }
     for (int i=31; i>0; i--) {
         if (x->d[i] != 0) {
             results(x, "x");
-            return 5;
+            fail += 1;
         }
     }
 
@@ -412,36 +412,36 @@ int test() {
     myn_mul_ui(x, x, 10);
     if (x->d[0] != 2000 || x->d[1] != 2000) {
         results(x, "x");
-        return 6;
+        fail += 1;
     }
     for (int i=31; i>1; i--) {
         if (x->d[i] != 0) {
             results(x, "x");
-            return 6;
+            fail += 1;
         }
     }
 
     myn_ui_pow_ui(x, 2, 2);
     if (x->d[0] != 4) {
         results(x, "x");
-        return 7;
+        fail += 1;
     }
     for (int i=31; i>0; i--) {
         if (x->d[i] != 0) {
             results(x, "x");
-            return 7;
+            fail += 1;
         }
     }
 
     myn_ui_pow_ui(x, 2, 31);
     if (x->l != 1 ) {
         results(x, "x");
-        return 8;
+        fail += 1;
     }
     myn_ui_pow_ui(x, 2, 32);
     if (x->l != 2 || x->d[0] != 0 || x->d[1] != 1) {
         results(x, "x");
-        return 8;
+        fail += 1;
     }
 
     myn_init(x);
@@ -451,7 +451,7 @@ int test() {
     int quote = myn_mod_quote(x, y);
     if (x->l != 1 || x->d[0] != 3 || quote != 1 ) {
         results(x, "x");
-        return 9;
+        fail += 1;
     }
 
     myn_init(x);
@@ -464,13 +464,13 @@ int test() {
     if (x->l != 2 || x->d[0] != 1 || x->d[1] != 1 ) {
         results(x, "x");
         results(y, "y");
-        return 9;
+        fail += 1;
     }
     myn_ui_pow_ui(y, 2, 32);
     quote = myn_mod_quote(x, y);
     if (x->l != 1 || x->d[0] != 1 || quote != 1 ) {
         results(x, "x");
-        return 9;
+        fail += 1;
     }
 
     myn_init(x);
@@ -478,64 +478,78 @@ int test() {
     myn_set_ui(x, 5);
     myn_set_ui(y, 4);
     if( myn_cmp(x, y) != 1) {
-        return 10;
+        fail += 1;
     }
     myn_set_ui(x, 3);
     if( myn_cmp(x, y) != -1) {
-        return 10;
+        fail += 1;
     }
     myn_set_ui(x, 4);
     if( myn_cmp(x, y) != 0) {
-        return 10;
+        fail += 1;
     }
 
     myn_init(x);
     myn_init(y);
     myn_ui_pow_ui(x, 2, 32);
     myn_set_ui(y, 100);
-    results(x, "x");
-    results(y, "y");
     myn_sub(x, x, y);
     if(x->l != 1 || x->d[0] != (UINT32_MAX-100) || y->l != 1 || y->d[0] != 100) {
         results(x, "x");
         results(y, "y");
-        return 11;
+        fail += 1;
     }
 
+    myn_init(x);
+    myn_init(y);
+    x->l = 3;
+    x->d[2] = 1;
+    myn_set_ui(y, 1);
+    myn_sub(x, x, y);
+    if (x->l != 2) fail += 1;
+    if (x->d[2] != 0) fail += 1;
+    for (int i=1; i>=0; i--) {
+        if (x->d[i] != UINT32_MAX-1) {
+            fail += 1;
+            break;
+        }
+    }
 
-    return 0;
+    return fail;
 }
 
 int main( int argc, char* argv[] ) {
 
 
-  int fail = test();
-  if (fail > 0) {
-      fprintf(stderr, "FAIL: test %d\n", fail);
-      return 1;
-  }
+    // YOU NEED TO SUBTRACT MORE! //
+    int fail = test();
+    if (fail > 0) {
+        fprintf(stderr, "[%d] TESTS FAILED.\n", fail);
+        return 1;
+    }
+    fprintf(stdout, "ALL TESTS PASSED.\n");
 
-  if( 2 != argc ) {
-    fprintf(stderr, "Expected 2 args; got %d\n", argc);
-    return 1;
-  }
+    if( 2 != argc ) {
+        fprintf(stderr, "Expected 2 args; got %d\n", argc);
+        return 1;
+    }
 
-  if ( !strcmp( argv[ 1 ], "stage1" ) ) {
-    stage1();
-  }
+    if ( !strcmp( argv[ 1 ], "stage1" ) ) {
+        stage1();
+    }
 
-  //else if( !strcmp( argv[ 1 ], "stage2" ) ) {
-  //  stage2();
-  //}
-  //else if( !strcmp( argv[ 1 ], "stage3" ) ) {
-  //  stage3();
-  //}
-  //else if( !strcmp( argv[ 1 ], "stage4" ) ) {
-  //  stage4();
-  //}
-  //else {
-  //  abort();
-  //}
+    //else if( !strcmp( argv[ 1 ], "stage2" ) ) {
+    //  stage2();
+    //}
+    //else if( !strcmp( argv[ 1 ], "stage3" ) ) {
+    //  stage3();
+    //}
+    //else if( !strcmp( argv[ 1 ], "stage4" ) ) {
+    //  stage4();
+    //}
+    //else {
+    //  abort();
+    //}
 
-  return 0;
+    return 0;
 }
