@@ -23,6 +23,7 @@
 
 #define SIGN_POS 0
 #define SIGN_NEG 1
+#define K_BITS 6
 
 typedef uint32_t limb_t;
 
@@ -60,6 +61,11 @@ typedef struct {
     mpz_t x;
     mpz_t c1, c2;
 } ElGamal_private_key;
+
+
+inline int test_bit(my_num_t* y, int64_t i) {
+  return (y->l > i >> 6) ? (y->d[i >> 6] >> (i & 31)) & 1 : 0;
+}
 
 int min(int x, int y) {
     if (x > y) {
@@ -281,6 +287,7 @@ void myn_mul_ui(my_num_t* r, my_num_t* x, const unsigned long int y) {
 
 
     for (int i=0; i<y; i++) {
+        fprintf(stderr, ">%l\n", y-i);
         myn_add(ans, ans, x);
     }
 
@@ -420,6 +427,35 @@ void myn_xmulydiv10(my_num_t* r, my_num_t* x, my_num_t* y) {
     }
 }
 
+void myn_mont_compute(my_num_t* q0, my_num_t* w, my_num_t* N) {
+    myn_init(q0);
+    myn_init(w);
+    myn_set_ui(q0, 1);
+
+    //FIX this
+    for (int i=31; i>= 0; i++) {
+        if(N->d[i] != 0) {
+            for(int j=0; j<10; j++) {
+                if ((N->d[i] >> j) == 0) {
+                    q0->l = i;
+                    if (j == 0) {
+                        q0->d[i] = 1;
+                    } else {
+                        q0->d[i] = j * 10;
+                    }
+                    break;
+                }
+
+                if (j == 9) {
+                    q0->d[i+1] = 1;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+}
+
 void myn_xmulymodN(my_num_t* r, my_num_t* x, my_num_t* y, my_num_t* N) {
     myn_init(r);
 
@@ -457,6 +493,142 @@ void myn_powm(my_num_t* r, my_num_t* base, my_num_t* expoent, my_num_t* modulo) 
         i++;
     }
 }
+
+int myn_lshift1(my_num_t* n, int limb) {
+    int ret = (n->d[limb-1] & ( 1 << 31 )) >> 31;
+    n->d[limb-1] = n->d[limb-1] << 1;
+    return ret;
+}
+
+
+void myn_mont_init(my_num_t* rr, uint32_t *o, my_num_t* N) {
+    uint32_t tmp = 1;
+    // -N^-1 (mod b)
+    for (int i=1; i< 32; i++) {
+        tmp *= tmp;
+        tmp *= N->d[0];
+    }
+    *o = -tmp;
+    // rho^2 (mod N)
+    myn_init(rr);
+    myn_set_ui(rr, 1);
+    for(int i=1; i <= N->l << 7; i++) {
+        int result = myn_lshift1(rr, rr->l);
+        if (result) {
+            rr->d[rr->l] = result;
+            rr->l++;
+        }
+        if (myn_cmp(rr, N) > -1) myn_sub(rr, rr, N);
+    }
+}
+
+void myn_rshift(my_num_t* r, int limb, int n) {
+    r->d[limb-1] = r->d[limb-1] >> n;
+}
+
+void myn_mont_mul(my_num_t* r, my_num_t* x, my_num_t* y, my_num_t* N, uint32_t o) {
+    my_num_t *tmp = malloc(sizeof(my_num_t));
+    my_num_t *t = malloc(sizeof(my_num_t));
+    my_num_t *yi_x = malloc(sizeof(my_num_t));
+    uint32_t i, u;
+    myn_init(yi_x);
+    myn_init(t);
+    myn_init(tmp);
+    myn_set_ui(tmp, 0);
+
+    for (i = 0; i < N->l; i++) {
+        u = (x->d[0] * ((y->l > i) ? y->d[i] : 0) + tmp->d[0]) * o;
+        myn_mul_ui(t, N, u);
+        myn_mul_ui(yi_x, x, (y->l > i) ? y->d[i] : 0);
+        myn_add(tmp, tmp, yi_x);
+        myn_add(tmp, tmp, t);
+
+        myn_rshift(tmp, tmp->l, 32);
+        myn_rshift(tmp, tmp->l, 32);
+
+        tmp->l -= 1;
+    }
+    if (myn_cmp(tmp, N) > -1) myn_sub(tmp, tmp, N);
+    myn_set(r, tmp);
+    //myn_clear(tmp);
+    //myn_clear(yi_x);
+    //myn_clear(t);
+}
+
+// Perform modular exponentiation via Sliding Window with Montgomery Multiplication
+void myn_exp_mod_mont(my_num_t* r, my_num_t* x, my_num_t* y, my_num_t* N, my_num_t* rho_squared, uint64_t omega) {
+  my_num_t* tmp = malloc(sizeof(my_num_t*) << (K_BITS - 1));
+  int32_t i, j, l, i_digit, i_bit, l_digit, l_bit;
+  uint32_t u;
+  // Preprocess results for y = 1,3,5..2^k - 1
+  my_num_t** T = malloc(sizeof(my_num_t*) << (K_BITS - 1));
+
+  myn_init(T[0]);
+  myn_set(T[0], x);
+  myn_init(tmp);
+  myn_mont_mul(tmp, x, x, N, omega);
+  for (i = 1; i < 1 << (K_BITS - 1); i++) {
+    myn_init(T[i]);
+    myn_mont_mul(T[i], T[i - 1], tmp, N, omega);
+  }
+
+  myn_set_ui(tmp, 1);
+  myn_mont_mul(tmp, tmp, rho_squared, N, omega);
+  // Set i to the size of y for 64-bit processors.
+  i = y->l << 6;
+
+  while (i >= 0) {
+    // If y_i = 1 then find l and u, otherwise set l = i and u = 0.
+    if (test_bit(y, i)) {
+      l = i - K_BITS + 1;
+      if (l < 0) l = 0;
+      while (!test_bit(y, l)) l++;
+      // Calculate u
+      i_digit = i >> 6;
+      i_bit = i & 31;
+      l_digit = l >> 6;
+      l_bit = l & 31;
+      if (i_digit == l_digit) u = (y->d[i_digit] << (31 - i_bit)) >> (31 - i_bit + l_bit);
+      else u = ( y->d[l_digit] >> l_bit) | (((y->d[i_digit] << (31 - i_bit)) >> (31 - i_bit)) << (32 - l_bit));
+    } else {
+      l = i;
+      u = 0;
+    }
+    // t = t^(2^(i - l + 1))
+    for (j = 0; j < i - l + 1; j++) {
+      myn_mont_mul(tmp, tmp, tmp, N, omega);
+    }
+    if (u != 0) {
+      // Multiply by x^((u - 1)/2) (mod N)
+      myn_mont_mul(tmp, tmp, T[(u - 1) >> 1], N, omega);
+    }
+    i = l - 1;
+  }
+  myn_set(r, tmp);
+  //myn_clear(tmp);
+  //for (i = 0; i < 1 << (K_BITS - 1); i++) {
+  //  myn_clear(T[i]);
+  //}
+}
+
+
+// Perform a modular operation via Montgomery Reduction
+void myn_mont_red(my_num_t* x, my_num_t* N, uint32_t omega) {
+  uint32_t i, u;
+  my_num_t* tmp = malloc(sizeof(my_num_t));
+  myn_init(tmp);
+  for (i = 0; i < N->l; i++) {
+    u = x->d[0] * omega;
+    myn_mul_ui(tmp, N, u);
+    myn_add(x, x, tmp);
+    myn_rshift(x, x->l, 32);
+    myn_rshift(x, x->l, 32);
+    x->l -= 1;
+  }
+  if (myn_cmp(x, N) > -1) myn_sub(x, x, N);
+  //mpz_clear(tmp);
+}
+
 
 void results(my_num_t *n, char* name) {
     fprintf(stderr, "Results: %s->l: %d, %s->d[1]: %u, %s->d[0]: %u\n", name, n->l, name, n->d[1], name, n->d[0]);
@@ -676,6 +848,31 @@ int test() {
         results(z, "z");
         fail++;
     }
+
+    myn_init(x);
+    myn_set_ui(x, 1);
+    int ret = myn_lshift1(x, 1);
+    if (x->d[0] != 2 && ret == 0) {
+        results(x, "x");
+        fail++;
+    }
+
+    myn_init(x);
+    myn_set_ui(x, (1<<31));
+    ret = myn_lshift1(x, 1);
+    if (x->d[0] == 0 && ret != 1) {
+        results(x, "x");
+        fail++;
+    }
+
+    myn_init(x);
+    myn_init(y);
+    myn_set_ui(x, 667);
+    uint32_t o = 0;
+
+    myn_mont_init(y, &o, x);
+    //fprintf(stdout, ">%u\n", o);
+    //fprintf(stdout, ">%u\n", y->d[0]);
 
 
     return fail;

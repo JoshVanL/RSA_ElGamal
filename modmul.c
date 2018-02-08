@@ -160,7 +160,15 @@ int genRandomKey(mpz_t k, const size_t size) {
 // N, e, m
 void RSAEncrypt(RSA_public_key *pk, my_num_t *cipher) {
     myn_init(cipher);
-    myn_powm(cipher, &pk->m, &pk->e, &pk->N);
+    my_num_t* rr = malloc(sizeof(my_num_t));
+    uint32_t o;
+
+    myn_mont_init(rr, &o, &(pk->N));
+    myn_mont_mul(&pk->m, &pk->m, rr, &pk->N, o);
+    myn_exp_mod_mont(cipher, &pk->m, &pk->e, &pk->N, rr, o);
+    myn_mont_red(cipher, &pk->N, o);
+
+    //myn_powm(cipher, &pk->m, &pk->e, &pk->N);
 }
 
 //Uses CRT with Garner's formula
@@ -218,15 +226,15 @@ void stage1() {
     }
 
     while(readGroup(exp_size, fields) != -1) {
-        //my_num_t cipher;
-        //RSA_public_key *pk = malloc(sizeof(RSA_public_key));
-        //init_RSA_pk(pk);
+        my_num_t cipher;
+        RSA_public_key *pk = malloc(sizeof(RSA_public_key));
+        init_RSA_pk(pk);
 
-        //myn_set(&pk->N, &fields[0]);
-        //myn_set(&pk->e, &fields[1]);
-        //myn_set(&pk->m, &fields[2]);
+        myn_set(&pk->N, &fields[0]);
+        myn_set(&pk->e, &fields[1]);
+        myn_set(&pk->m, &fields[2]);
 
-        //RSAEncrypt(pk, &cipher);
+        RSAEncrypt(pk, &cipher);
 
         //char out[256];
         //for (int i=0; i<256; i++)
@@ -234,8 +242,8 @@ void stage1() {
 
 
 
-        //char* out = zToStr(&cipher);
-        //fprintf( stdout, "%s\n", out);
+        char* out = zToStr(&cipher);
+        fprintf( stdout, "%s\n", out);
     }
 }
 
