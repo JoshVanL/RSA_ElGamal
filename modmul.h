@@ -17,8 +17,6 @@
 
 #endif
 
-#define K_BITS 6
-
 typedef struct {
     mpz_t N, e;
     mpz_t m;
