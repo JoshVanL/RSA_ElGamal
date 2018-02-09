@@ -6,7 +6,7 @@
 #define K_BITS 6
 #define BASE 16
 #define WORD_LENGTH 256
-#define P_MOD_SIZE 1024
+#define LIMB_SIZE 64
 
 void init_RSA_pk(RSA_public_key **pk) {
     *pk = (RSA_public_key*) malloc(sizeof(RSA_public_key));
@@ -37,6 +37,20 @@ void init_ElGamal_sk(ElGamal_private_key **sk) {
     mpz_inits((*sk)->c1, (*sk)->c2, NULL);
 }
 
+unsigned int get_bits(mpz_t exp, int start, int end) {
+    mpz_t tmp;
+    mpz_init(tmp);
+
+    // Right shift: tmp >> end, tmp = exp / 2^end
+    mpz_tdiv_q_2exp(tmp, exp, end);
+
+    // Masking - defines which bits to keep
+    unsigned int mask = ((1 << (start - end + 1)) - 1);
+    unsigned int bits = mpz_get_ui(tmp) & mask;
+    mpz_clear(tmp);
+
+    return bits;
+}
 
 void montgomery_CRT_init(mpz_t rr, mpz_t rrr, mpz_t N) {
     mpz_set(rrr, rr);
@@ -57,58 +71,26 @@ void montgomery_CRT_init(mpz_t rr, mpz_t rrr, mpz_t N) {
 
 int getBit(mpz_t x, int n) {
     if (x->_mp_size > n >> 6) {
-        return (x->_mp_d[n >> 6] >> (n & 63)) & 1;
+        return (x->_mp_d[n >> 6] >> (n & (LIMB_SIZE-1))) & 1;
     }
 
     return 0;
 }
 
-///////////////////////////////////////////
-void montgomery_init(mpz_t rr, uint64_t *o, mpz_t N) {
-    // ensusre rr is init up to N
+void mont_init(mpz_t rr, uint64_t *o, mpz_t N) {
     mpz_set(rr, N);
-    mpz_set_ui(rr, 1);
 
-    for (int i = 1; i <= N->_mp_size << 7; i++) {
-        int result = mpn_lshift(rr->_mp_d, rr->_mp_d, rr->_mp_size, 1);
-        if (result) {
-            rr->_mp_d[rr->_mp_size] = result;
-            rr->_mp_size++;
-        }
-
+	mpz_set_ui(rr,1);
+	for (int i=1; i <= N->_mp_size*2*LIMB_SIZE; i++){
+		mpz_add(rr, rr, rr);
         if (mpz_cmp(rr, N) >= 0) {
             mpz_sub(rr, rr, N);
         }
-    }
+	}
 
     *o = 1;
-    for (int i = 1; i < 64; i++) {
-        *o *= *o;
-        *o *= N->_mp_d[0];
-    }
-    *o *= -1;
-}
-
-void mont_init(mpz_t ro, uint64_t *o, mpz_t N) {
-    mpz_set(ro, N);
-    mpz_set_ui(ro, 1);
-
-    for (int i = 1; i <= N->_mp_size << 7; i++) {
-        int result = mpn_lshift(ro->_mp_d, ro->_mp_d, ro->_mp_size, 1);
-        if (result) {
-            ro->_mp_d[ro->_mp_size] = result;
-            ro->_mp_size++;
-        }
-
-        if (mpz_cmp(ro, N) >= 0) {
-            mpz_sub(ro, ro, N);
-        }
-    }
-
-    *o = 1;
-    for (int i = 1; i < 64; i++) {
-        *o *= *o;
-        *o *= N->_mp_d[0];
+    for (int i = 1; i < LIMB_SIZE; i++) {
+        *o *= *o * N->_mp_d[0];
     }
     *o *= -1;
 }
@@ -123,11 +105,12 @@ void mont_mul(mpz_t r, mpz_t x, mpz_t y, mpz_t N, uint64_t o) {
 
         mpz_mul_ui(yix, x, y->_mp_d[i]);
         mpz_mul_ui(uiN, N, ui);
+
         mpz_add(ans, ans, yix);
         mpz_add(ans, ans, uiN);
+        mpn_rshift(ans->_mp_d, ans->_mp_d, ans->_mp_size, LIMB_SIZE);
 
-        mpn_rshift(r->_mp_d, r->_mp_d, r->_mp_size, 64);
-        r->_mp_size --;
+        ans->_mp_size --;
     }
 
     if (mpz_cmp(ans, N) >= 0) {
@@ -135,32 +118,6 @@ void mont_mul(mpz_t r, mpz_t x, mpz_t y, mpz_t N, uint64_t o) {
     }
 
     mpz_set(r, ans);
-}
-
-
-void montgomery_mul(mpz_t ans, mpz_t x, mpz_t y, mpz_t N, uint64_t o) {
-    mpz_t r, uiN, yix;
-    mpz_inits(yix, uiN, r, NULL);
-    mpz_set_ui(r, 0);
-
-    for (int i = 0; i < N->_mp_size; i++) {
-        uint64_t ui = (r->_mp_d[0] + (y->_mp_d[i] * x->_mp_d[0])) * o;
-
-        mpz_mul_ui(yix, x, y->_mp_d[i]);
-        mpz_mul_ui(uiN, N, ui);
-
-        mpz_add(r, r, yix);
-        mpz_add(r, r, uiN);
-        mpn_rshift(r->_mp_d, r->_mp_d, r->_mp_size, 64);
-
-        r->_mp_size --;
-    }
-
-    if (mpz_cmp(r, N) >= 0) {
-        mpz_sub(r, r, N);
-    }
-
-    mpz_set(ans, r);
 }
 
 void mont_red(mpz_t r, mpz_t t, mpz_t N, uint64_t o) {
@@ -174,49 +131,13 @@ void mont_red(mpz_t r, mpz_t t, mpz_t N, uint64_t o) {
         mpz_mul_ui (uiN, N, ui);
         mpz_add(r, r, uiN);
 
-        mpn_rshift(r->_mp_d, r->_mp_d, i, 64);
+        mpn_rshift(r->_mp_d, r->_mp_d, r->_mp_size, LIMB_SIZE);
         r->_mp_size -= 1;
     }
 
     if (mpz_cmp(r, N) >= 0) {
         mpz_sub(r, r, N);
     }
-}
-
-void montgomery_reduction(mpz_t r, mpz_t N, uint64_t o) {
-    mpz_t tmp;
-    mpz_init(tmp);
-
-    for (int i = 0; i < N->_mp_size; i++) {
-        uint64_t ui = r->_mp_d[0] * o;
-
-        mpz_mul_ui(tmp, N, ui);
-        mpz_add(r, r, tmp);
-
-        mpn_rshift(r->_mp_d, r->_mp_d, r->_mp_size, 64);
-        r->_mp_size -= 1;
-    }
-
-    if (mpz_cmp(r, N) >= 0) {
-        mpz_sub(r, r, N);
-    }
-}
-
-void mont_exp_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro, uint64_t o) {
-    mpz_t t_hat, x_hat, one, loop;
-    mpz_inits(t_hat, x_hat, one, loop, NULL);
-    mpz_set_ui(t_hat, 1);
-
-    mont_mul(t_hat, t_hat, ro, N, o);
-    mont_mul(x_hat, x, ro, N, o);
-
-    for (int i=y->_mp_size-1; i>=0; i--) {
-        mont_mul(t_hat, t_hat, t_hat, N, o);
-        if (y->_mp_d[i] == 1) {
-            mont_mul(t_hat, t_hat, x_hat, N, o);
-        }
-    }
-    mpz_set(r, t_hat);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -227,14 +148,14 @@ void montgomery_exp_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t rr, uint64_t o
     T = malloc(sizeof(mpz_t) << (K_BITS - 1));
     mpz_init_set(T[0], x);
     mpz_init(tmp);
-    montgomery_mul(tmp, x, x, N, o);
+    mont_mul(tmp, x, x, N, o);
     for (int i = 1; i < 1 << (K_BITS - 1); i++) {
         mpz_init(T[i]);
-        montgomery_mul(T[i], T[i - 1], tmp, N, o);
+        mont_mul(T[i], T[i - 1], tmp, N, o);
     }
 
     mpz_set_ui(tmp, 1);
-    montgomery_mul(tmp, tmp, rr, N, o);
+    mont_mul(tmp, tmp, rr, N, o);
     int i = y->_mp_size << 6;
 
     while (i >= 0) {
@@ -245,19 +166,19 @@ void montgomery_exp_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t rr, uint64_t o
             if (l < 0) l = 0;
             while (!getBit(y, l)) l++;
             int id = i >> 6;
-            int ib = i & 63;
+            int ib = i & (LIMB_SIZE-1);
             int ld = l >> 6;
-            int lb = l & 63;
-            if (id == ld) u = (y->_mp_d[id] << (63 - ib)) >> (63 - ib + lb);
-            else u = ( y->_mp_d[ld] >> lb) | (((y->_mp_d[id] << (63 - ib)) >> (63 - ib)) << (64 - lb));
+            int lb = l & (LIMB_SIZE-1);
+            if (id == ld) u = (y->_mp_d[id] << (LIMB_SIZE - 1 - ib)) >> (LIMB_SIZE - 1 - ib + lb);
+            else u = ( y->_mp_d[ld] >> lb) | (((y->_mp_d[id] << (LIMB_SIZE - 1 - ib)) >> (LIMB_SIZE - 1 - ib)) << (LIMB_SIZE - lb));
         } else {
             l = i;
         }
         for (int j = 0; j < i - l + 1; j++) {
-            montgomery_mul(tmp, tmp, tmp, N, o);
+            mont_mul(tmp, tmp, tmp, N, o);
         }
         if (u != 0) {
-            montgomery_mul(tmp, tmp, T[(u - 1) >> 1], N, o);
+            mont_mul(tmp, tmp, T[(u - 1) >> 1], N, o);
         }
         i = l - 1;
     }
@@ -275,13 +196,13 @@ void exp_mod_crt(mpz_t ans, mpz_t x, mpz_t y, mpz_t N) {
     mpz_init(rr);
     mpz_init(rrr);
 
-    montgomery_init(rr, &o, N);
+    mont_init(rr, &o, N);
     montgomery_CRT_init(rr, rrr, N);
-    montgomery_mul(x_tmp, x_tmp, rrr, N, o);
-    montgomery_reduction(x_tmp, N, o);
+    mont_mul(x_tmp, x_tmp, rrr, N, o);
+    mont_red(x_tmp, x_tmp, N, o);
 
     montgomery_exp_mod(ans, x_tmp, y, N, rr, o);
-    montgomery_reduction(ans, N, o);
+    mont_red(ans, ans, N, o);
 }
 
 
@@ -403,16 +324,16 @@ void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
     uint64_t o = 0;
     mpz_t ro;
     mpz_inits(cipher, ro, NULL);
-    //montgomery_init(ro, &o, pk->N);
-    //montgomery_mul(pk->m, pk->m, ro, pk->N, o);
-    //gmp_printf(">%Zd\n", ro);
-    //montgomery_exp_mod(cipher, pk->m, pk->e, pk->N, rr, o);
-    //montgomery_reduction(cipher, pk->N, o);
     mont_init(ro, &o, pk->N);
-    //// THIS IS BROKEN<<<<
     mont_mul(pk->m, pk->m, ro, pk->N, o);
-    gmp_printf(">%Zd\n", pk->m);
+    montgomery_exp_mod(cipher, pk->m, pk->e, pk->N, ro, o);
+    mont_red(cipher, cipher, pk->N, o);
+    //mont_init(ro, &o, pk->N);
+    ////// THIS IS BROKEN<<<<
+    //mont_mul(pk->m, pk->m, ro, pk->N, o);
+    ////gmp_printf(">%Zd\n", pk->m);
     //mont_exp_mod(cipher, pk->m, pk->e, pk->N, ro, o);
+    //gmp_printf(">%Zd\n\n", cipher);
     //mont_red(cipher, cipher, pk->N, o);
 }
 
@@ -457,16 +378,16 @@ void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2) {
     // c_1 = g^w (mod p)
     // c_2 = m * h^w (mod p)
     // //////////////////////////////////////
-    montgomery_init(rr, &o, pk->p);
-    montgomery_mul(pk->g, pk->g, rr, pk->p, o);
+    mont_init(rr, &o, pk->p);
+    mont_mul(pk->g, pk->g, rr, pk->p, o);
     montgomery_exp_mod(c1, pk->g, pk->k, pk->p, rr, o);
-    montgomery_reduction(c1, pk->p, o);
+    mont_red(c1, c1, pk->p, o);
 
-    montgomery_mul(pk->h, pk->h, rr, pk->p, o);
+    mont_mul(pk->h, pk->h, rr, pk->p, o);
     montgomery_exp_mod(c2, pk->h, pk->k, pk->p, rr, o);
-    montgomery_mul(pk->m, pk->m, rr, pk->p, o);
-    montgomery_mul(c2, c2, pk->m, pk->p, o);
-    montgomery_reduction(c2, pk->p, o);
+    mont_mul(pk->m, pk->m, rr, pk->p, o);
+    mont_mul(c2, c2, pk->m, pk->p, o);
+    mont_red(c2, c2, pk->p, o);
 }
 
 void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
@@ -476,15 +397,15 @@ void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
 
     //////////////////////////////////
     // m = c_1^(q-x) * c_2 (mod p)
-    montgomery_init(rr, &o, sk->p);
+    mont_init(rr, &o, sk->p);
     mpz_sub(tmp, sk->q, sk->x);
 
 
-    montgomery_mul(sk->c1, sk->c1, rr, sk->p, o);
+    mont_mul(sk->c1, sk->c1, rr, sk->p, o);
     montgomery_exp_mod(message, sk->c1, tmp, sk->p, rr, o);
-    montgomery_mul(sk->c2, sk->c2, rr, sk->p, o);
-    montgomery_mul(message, message, sk->c2, sk->p, o);
-    montgomery_reduction(message, sk->p, o);
+    mont_mul(sk->c2, sk->c2, rr, sk->p, o);
+    mont_mul(message, message, sk->c2, sk->p, o);
+    mont_red(message, message, sk->p, o);
 }
 
 // m^e (mod N)
