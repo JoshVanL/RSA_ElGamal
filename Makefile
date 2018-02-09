@@ -9,7 +9,9 @@ all: build check
 build:
 	gcc -Wall -std=gnu99 -O3 -o modmul -lgmp -lm modmul.c
 
-check:
+check: build test
+
+test:
 	for number in 1 2 3 4 ; do \
 		./modmul stage$$number < stage$$number.input > foo; \
 		cmp stage$$number.output foo || echo "stage $$number failed"; \
