@@ -1,12 +1,15 @@
-// Joshua Van Leeuwen
-// University of Bristol
+///////////////////////////
+// Joshua Van Leeuwen    //
+// University of Bristol //
+///////////////////////////
 
 #include "modmul.h"
 
 #define WINDOW_SIZE 6
 #define HEX_BASE 16
-#define WORD_LENGTH 256
+#define NUMBER_OF_LIMBS 32
 #define LIMB_SIZE 64
+#define WORD_LENGTH 256
 
 void init_RSA_pk(RSA_public_key **pk, mpz_t fields[3]) {
     *pk = (RSA_public_key*) malloc(sizeof(RSA_public_key));
@@ -79,7 +82,7 @@ int get_word(mp_limb_t x, int start, int end) {
     return (x << (LIMB_SIZE - 1 - end)) >> (LIMB_SIZE - 1 - end + start);
 }
 
-void mont_omega(mp_limb_t *o, mpz_t N) {
+void mnt_omega(mp_limb_t *o, mpz_t N) {
     *o = 1;
     for (int i = 1; i < LIMB_SIZE; i++) {
         *o *= *o * N->_mp_d[0];
@@ -87,55 +90,61 @@ void mont_omega(mp_limb_t *o, mpz_t N) {
     *o = -*o;
 }
 
-void mont_ro(mpz_t ro, mpz_t N, int power) {
-    mpz_init(ro);
-    mpz_set_ui(ro, 1);
+void mnt_ro2(mpz_t ro2, mpz_t N) {
+    mpz_init(ro2);
+    mpz_set_ui(ro2, 1);
 
-    for (int i=1; i <= N->_mp_size * LIMB_SIZE * power; i++){
-        mpz_add(ro, ro, ro);
-        if (mpz_cmp(ro, N) >= 0) {
-            mpz_sub(ro, ro, N);
+    for (int i=1; i <= N->_mp_size * LIMB_SIZE * 2; i++){
+        mpz_add(ro2, ro2, ro2);
+
+        if (mpz_cmp(N, ro2) < 0) {
+            mpz_sub(ro2, ro2, N);
         }
     }
 }
 
-void mont_mul(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mp_limb_t o) {
-    mpz_t yix, uiN, ans;
-    mpz_inits(ans, yix, uiN, NULL);
-    mpz_set_ui(ans, 0);
+void mnt_mul(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mp_limb_t o) {
+    mpz_t yix, uiN, res;
+    mpz_inits(res, yix, uiN, NULL);
+    mpz_set_ui(res, 0);
 
-    for (int i=0; i < N->_mp_size; i++) {
-        mp_limb_t ui = (ans->_mp_d[0] + (y->_mp_d[i] * x->_mp_d[0])) * o;
+    for (int i = 0; i < N->_mp_size; i++) {
+        mp_limb_t ui = (res->_mp_d[0] + (y->_mp_d[i] * x->_mp_d[0])) * o;
 
         mpz_mul_ui(yix, x, y->_mp_d[i]);
         mpz_mul_ui(uiN, N, ui);
 
-        mpz_add(ans, ans, yix);
-        mpz_add(ans, ans, uiN);
-        mpn_rshift(ans->_mp_d, ans->_mp_d, ans->_mp_size, LIMB_SIZE);
+        mpz_add(res, res, yix);
+        mpz_add(res, res, uiN);
 
-        ans->_mp_size --;
+        for (int j = 0; j < res->_mp_size - 1; j++) {
+            res->_mp_d[j] = res->_mp_d[j + 1];
+        }
+        res->_mp_size -= 1;
     }
 
-    if (mpz_cmp(ans, N) >= 0) {
-        mpz_sub(ans, ans, N);
+    if (mpz_cmp(res, N) >= 0) {
+        mpz_sub(res, res, N);
     }
 
-    mpz_set(r, ans);
+    mpz_set(r, res);
 }
 
-void mont_red(mpz_t r, mpz_t t, mpz_t N, mp_limb_t o) {
-    mpz_t uiN;
-    mpz_init(uiN);
+void mnt_red(mpz_t r, mpz_t t, mpz_t N, mp_limb_t o) {
+    mpz_t uiN, bi;
+    mpz_inits(uiN, bi, NULL);
     mpz_set(r, t);
 
-    for (int i=0; i < N->_mp_size; i++) {
+    // Divide by b at each iteration
+    for (int i = 0; i < N->_mp_size; i++) {
         mp_limb_t ui = r->_mp_d[0] * o;
 
-        mpz_mul_ui (uiN, N, ui);
+        mpz_mul_ui(uiN, N, ui);
         mpz_add(r, r, uiN);
 
-        mpn_rshift(r->_mp_d, r->_mp_d, r->_mp_size, LIMB_SIZE);
+        for (int j = 0; j < r->_mp_size-1; j++) {
+            r->_mp_d[j] = r->_mp_d[j + 1];
+        }
         r->_mp_size -= 1;
     }
 
@@ -144,21 +153,21 @@ void mont_red(mpz_t r, mpz_t t, mpz_t N, mp_limb_t o) {
     }
 }
 
-void mont_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
-    mpz_t T[32], t, tmp;
+void mnt_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
+    mpz_t T[NUMBER_OF_LIMBS], t, tmp;
     mpz_inits(t, tmp, NULL);
 
     // initiate T
-    mont_mul(tmp, x, x, N, o);
+    mnt_mul(tmp, x, x, N, o);
     mpz_init_set(T[0], x);
-    for (int i = 1; i < 32; i++) {
+    for (int i = 1; i < NUMBER_OF_LIMBS; i++) {
         mpz_init(T[i]);
-        mont_mul(T[i], T[i - 1], tmp, N, o);
+        mnt_mul(T[i], T[i - 1], tmp, N, o);
     }
 
     // initiate t
     mpz_set_ui(t, 1);
-    mont_mul(t, t, ro2, N, o);
+    mnt_mul(t, t, ro2, N, o);
 
     // Set i to the number of bits in y - 1
     int i = (y->_mp_size * LIMB_SIZE) - 1;
@@ -183,6 +192,7 @@ void mont_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
             int l_bits = l % LIMB_SIZE;
 
             // Check whether i and l are in the same limb
+            // If not then get bits from each limb appropriately
             if (i_limb == l_limb) {
                 u = get_word(y->_mp_d[i_limb], l_bits, i_bits);
             } else {
@@ -190,12 +200,12 @@ void mont_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
             }
         }
 
-        for (int j = 0; j < i - l + 1; j++) {
-            mont_mul(t, t, t, N, o);
+        for (int j = 0; j <= i - l; j++) {
+            mnt_mul(t, t, t, N, o);
         }
 
         if (u != 0) {
-            mont_mul(t, t, T[(u-1)/2], N, o);
+            mnt_mul(t, t, T[(u-1)/2], N, o);
         }
 
         i = l - 1;
@@ -204,32 +214,19 @@ void mont_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
     mpz_set(r, t);
 }
 
-void exp_mod_crt(mpz_t r, mpz_t x, mpz_t y, mpz_t N) {
-    mpz_t ro2, ro3, tmp;
-    mp_limb_t o;
-    mpz_inits(ro2, ro3, tmp, NULL);
-
-    mpz_set(tmp, x);
-
-    mont_omega(&o, N);
-    mont_ro(ro2, N, 2);
-    mont_ro(ro3, N, 3);
-
-    mont_mul(tmp, tmp, ro3, N, o);
-    mont_red(tmp, tmp, N, o);
-
-    mont_pow_mod(r, tmp, y, N, ro2, o);
-    mont_red(r, r, N, o);
-}
-
-
 int hexToZ(char ch) {
-    if (ch >= '0' && ch <= '9')
+    if (ch >= '0' && ch <= '9') {
         return ch - '0';
-    if (ch >= 'A' && ch <= 'F')
+    }
+
+    if (ch >= 'A' && ch <= 'F') {
         return ch - 'A' + 10;
-    if (ch >= 'a' && ch <= 'f')
+    }
+
+    if (ch >= 'a' && ch <= 'f') {
         return ch - 'a' + 10;
+    }
+
     return -1;
 }
 
@@ -316,7 +313,7 @@ int readGroup(int size, mpz_t field[size]) {
     return 0;
 }
 
-int genRandomKey(mpz_t k, const size_t size) {
+int generate_random_seed(mpz_t seed, const size_t size) {
     char* dat = (char*) malloc(sizeof(char)*size);
 
     int file = open("/dev/random", O_RDONLY);
@@ -335,57 +332,41 @@ int genRandomKey(mpz_t k, const size_t size) {
         return -1;
     }
 
-    mpz_import(k, size, 1, sizeof(char), 0, 0, dat);
+    mpz_import(seed, size, 1, sizeof(char), 0, 0, dat);
 
     return 0;
 }
 
-// N, e, m
 void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
     mp_limb_t o;
-    mpz_t ro;
-    mpz_inits(cipher, ro, NULL);
+    mpz_t ro2;
+    mpz_inits(cipher, ro2, NULL);
 
-    mont_omega(&o, pk->N);
-    mont_ro(ro, pk->N, 2);
+    mnt_omega(&o, pk->N);
+    mnt_ro2(ro2, pk->N);
 
-    mont_mul(pk->m, pk->m, ro, pk->N, o);
-    mont_pow_mod(cipher, pk->m, pk->e, pk->N, ro, o);
-    mont_red(cipher, cipher, pk->N, o);
+    //c = m^e mod (N)
+    mnt_mul(pk->m, pk->m, ro2, pk->N, o);
+    mnt_pow_mod(cipher, pk->m, pk->e, pk->N, ro2, o);
+    mnt_red(cipher, cipher, pk->N, o);
 }
 
-//Uses CRT
+// Uses Chinese Remainder Theorm
 void RSADecrypt(RSA_private_key *sk, mpz_t message) {
     mpz_t m1, m2;
-    mpz_t ro2_p, ro2_q;
-    mpz_t ro3_p, ro3_q;
-    mp_limb_t o_p, o_q;
-    mpz_inits(m1, m2, message, ro2_p, ro2_q, ro3_p, ro3_q, NULL);
+    mpz_inits(m1, m2, message, NULL);
 
-    mont_omega(&o_p, sk->p);
-    mont_omega(&o_q, sk->q);
-    mont_ro(ro2_p, sk->p, 2);
-    mont_ro(ro3_p, sk->p, 3);
-    mont_ro(ro2_q, sk->q, 2);
-    mont_ro(ro3_q, sk->q, 3);
+    mpz_powm(m1, sk->c, sk->d_p, sk->p);
+    mpz_powm(m2, sk->c, sk->d_q, sk->q);
 
-    mont_mul(m1, sk->c, ro3_p, sk->p, o_p);
-    mont_red(m1, m1, sk->p, o_p);
-    mont_pow_mod(m1, m1, sk->d_p, sk->p, ro2_p, o_p);
-    mont_red(m1, m1, sk->p, o_p);
-
-    mont_mul(m2, sk->c, ro3_q, sk->q, o_q);
-    mont_red(m2, m2, sk->q, o_q);
-    mont_pow_mod(m2, m2, sk->d_q, sk->q, ro2_q, o_q);
-    mont_red(m2, m2, sk->q, o_q);
-
+    // qInv = (1/q) mod p
+    // h = qInv.(m1 - m2) mod p
+    // m = m2 + h.q
+    mpz_sub(m1, m1, m2);
+    mpz_mul(m1, sk->i_q, m1);
+    mpz_mod(m1, m1, sk->p);
     mpz_mul(m1, m1, sk->q);
-    mpz_mul(m1, m1, sk->i_q);
-    mpz_mul(m2, m2, sk->p);
-    mpz_mul(m2, m2, sk->i_p);
-
     mpz_add(message, m1, m2);
-    mpz_mod(message, message, sk->N);
 }
 
 void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2) {
@@ -393,7 +374,7 @@ void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2) {
     mp_limb_t o;
     mpz_inits(pk->k, ro2, c1, c2, NULL);
 
-    //if (genRandomKey(pk->k, P_MOD_SIZE) < 0) {
+    //if (generate_random_seed(pk->k, P_MOD_SIZE) < 0) {
     //    return;
     //}
     //mpz_mod(pk->k, pk->k, pk->p);
@@ -401,19 +382,19 @@ void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2) {
     //Enable for testing
     mpz_set_ui(pk->k, 1);
 
-    mont_omega(&o, pk->p);
-    mont_ro(ro2, pk->p, 2);
+    mnt_omega(&o, pk->p);
+    mnt_ro2(ro2, pk->p);
 
-    mont_mul(pk->g, pk->g, ro2, pk->p, o);
-    mont_pow_mod(c1, pk->g, pk->k, pk->p, ro2, o);
+    mnt_mul(pk->g, pk->g, ro2, pk->p, o);
+    mnt_pow_mod(c1, pk->g, pk->k, pk->p, ro2, o);
 
-    mont_mul(pk->h, pk->h, ro2, pk->p, o);
-    mont_pow_mod(c2, pk->h, pk->k, pk->p, ro2, o);
-    mont_mul(pk->m, pk->m, ro2, pk->p, o);
-    mont_mul(c2, c2, pk->m, pk->p, o);
+    mnt_mul(pk->h, pk->h, ro2, pk->p, o);
+    mnt_pow_mod(c2, pk->h, pk->k, pk->p, ro2, o);
+    mnt_mul(pk->m, pk->m, ro2, pk->p, o);
+    mnt_mul(c2, c2, pk->m, pk->p, o);
 
-    mont_red(c1, c1, pk->p, o);
-    mont_red(c2, c2, pk->p, o);
+    mnt_red(c1, c1, pk->p, o);
+    mnt_red(c2, c2, pk->p, o);
 }
 
 void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
@@ -421,17 +402,17 @@ void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
     mpz_t ro2, qx;
     mpz_inits(ro2, qx, message, NULL);
 
-    mont_omega(&o, sk->p);
-    mont_ro(ro2, sk->p, 2);
+    mnt_omega(&o, sk->p);
+    mnt_ro2(ro2, sk->p);
     mpz_sub(qx, sk->q, sk->x);
 
-    mont_mul(sk->c1, sk->c1, ro2, sk->p, o);
-    mont_pow_mod(message, sk->c1, qx, sk->p, ro2, o);
+    mnt_mul(sk->c1, sk->c1, ro2, sk->p, o);
+    mnt_pow_mod(message, sk->c1, qx, sk->p, ro2, o);
 
-    mont_mul(sk->c2, sk->c2, ro2, sk->p, o);
-    mont_mul(message, message, sk->c2, sk->p, o);
+    mnt_mul(sk->c2, sk->c2, ro2, sk->p, o);
+    mnt_mul(message, message, sk->c2, sk->p, o);
 
-    mont_red(message, message, sk->p, o);
+    mnt_red(message, message, sk->p, o);
 }
 
 // m^e (mod N)

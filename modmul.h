@@ -1,5 +1,7 @@
-// Joshua Van Leeuwen
-// University of Bristol
+///////////////////////////
+// Joshua Van Leeuwen    //
+// University of Bristol //
+///////////////////////////
 
 #ifndef __MODMUL_H
 #define __MODMUL_H
