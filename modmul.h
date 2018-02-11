@@ -12,7 +12,6 @@
 
 #include <unistd.h>
 #include <fcntl.h>
-#include <math.h>
 #include <stdint.h>
 
 #endif
