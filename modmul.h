@@ -45,3 +45,9 @@ typedef struct {
     mpz_t x;
     mpz_t c1, c2;
 } ElGamal_private_key;
+
+typedef struct {
+    mpz_t p, q;
+    mpz_t N;
+    mpz_t s;
+} BBS;

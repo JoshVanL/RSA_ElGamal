@@ -10,6 +10,7 @@
 #define NUMBER_OF_LIMBS 32
 #define LIMB_SIZE 64
 #define WORD_LENGTH 256
+#define LAMDA_SIZE 1024
 
 void init_RSA_pk(RSA_public_key **pk, mpz_t fields[3]) {
     *pk = (RSA_public_key*) malloc(sizeof(RSA_public_key));
@@ -313,7 +314,7 @@ int readGroup(int size, mpz_t field[size]) {
     return 0;
 }
 
-int generate_random_seed(mpz_t seed, const size_t size) {
+int generate_random_number(mpz_t seed, const size_t size) {
     char* dat = (char*) malloc(sizeof(char)*size);
 
     int file = open("/dev/random", O_RDONLY);
@@ -369,15 +370,12 @@ void RSADecrypt(RSA_private_key *sk, mpz_t message) {
     mpz_add(message, m1, m2);
 }
 
-void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2) {
+void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key) {
     mpz_t ro2;
     mp_limb_t o;
     mpz_inits(pk->k, ro2, c1, c2, NULL);
 
-    //if (generate_random_seed(pk->k, P_MOD_SIZE) < 0) {
-    //    return;
-    //}
-    //mpz_mod(pk->k, pk->k, pk->p);
+    mpz_mod(pk->k, key, pk->p);
 
     //Enable for testing
     mpz_set_ui(pk->k, 1);
@@ -414,6 +412,63 @@ void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
 
     mnt_red(message, message, sk->p, o);
 }
+
+int BBS_check_prime(mpz_t p) {
+    if (mpz_probab_prime_p(p, 30) == 0) {
+        return 0;
+    }
+
+    mpz_t test;
+    mpz_init(test);
+    mpz_mod_ui(test, p, 4);
+    if (mpz_cmp_ui(test, 3) == 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
+void BBS_init(BBS* bbs) {
+    mpz_t p, q, N, s;
+    mpz_t gcd;
+    mpz_inits(p, q, N, s, gcd, NULL);
+    mpz_inits(bbs->p, bbs->q, bbs->N, bbs->s, NULL);
+    mpz_set_ui(p, 0);
+    mpz_set_ui(q, 0);
+    mpz_set_ui(gcd, 0);
+
+    while(BBS_check_prime(p) == 0) {
+        generate_random_number(p, sizeof(mp_limb_t)*32);
+        mpz_nextprime(p, p);
+    }
+
+    while(BBS_check_prime(q) == 0) {
+        generate_random_number(q, sizeof(mp_limb_t)*32);
+        mpz_nextprime(q, q);
+    }
+
+    mpz_mul(N, p, q);
+
+    while(!(mpz_cmp_ui(gcd, 1) == 0)) {
+        generate_random_number(s, sizeof(mp_limb_t)*32);
+        mpz_mod(s, s, N);
+        mpz_gcd(gcd, s, N);
+    }
+
+    mpz_powm_ui(s, s, 2, N);
+
+    mpz_set(bbs->p, p);
+    mpz_set(bbs->q, q);
+    mpz_set(bbs->N, N);
+    mpz_set(bbs->s, s);
+}
+
+int BBS_next(BBS *bbs) {
+    mpz_powm_ui(bbs->s, bbs->s, 2, bbs->N);
+
+    return (int) (bbs->s->_mp_d[0] & 1);
+}
+
 
 // m^e (mod N)
 void stage1() {
@@ -462,12 +517,17 @@ void stage3() {
         mpz_init(fields[i]);
     }
 
+    BBS bbs;
+    BBS_init(&bbs);
+
     while(readGroup(exp_size, fields) != -1) {
+        BBS_next(&bbs);
+
         mpz_t c1, c2;
         ElGamal_public_key *pk;
         init_ElGamal_pk(&pk, fields);
 
-        ElGamalEncrypt(pk, c1, c2);
+        ElGamalEncrypt(pk, c1, c2, bbs.s);
 
         print_number(c1);
         print_number(c2);
