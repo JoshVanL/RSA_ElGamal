@@ -438,20 +438,24 @@ void BBS_init(BBS* bbs) {
     mpz_set_ui(gcd, 0);
 
     while(BBS_check_prime(p) == 0) {
-        generate_random_number(p, sizeof(mp_limb_t)*32);
+        generate_random_number(p, sizeof(mp_limb_t)*NUMBER_OF_LIMBS);
         mpz_nextprime(p, p);
     }
 
     while(BBS_check_prime(q) == 0) {
-        generate_random_number(q, sizeof(mp_limb_t)*32);
+        generate_random_number(q, sizeof(mp_limb_t)*NUMBER_OF_LIMBS);
         mpz_nextprime(q, q);
     }
 
     mpz_mul(N, p, q);
 
     while(!(mpz_cmp_ui(gcd, 1) == 0)) {
-        generate_random_number(s, sizeof(mp_limb_t)*32);
+        generate_random_number(s, sizeof(mp_limb_t)*NUMBER_OF_LIMBS);
         mpz_mod(s, s, N);
+        if (mpz_cmp(s, N) >= 0) {
+            mpz_sub(s, s, N);
+        }
+
         mpz_gcd(gcd, s, N);
     }
 
