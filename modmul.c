@@ -375,7 +375,12 @@ void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key) {
     mp_limb_t o;
     mpz_inits(pk->k, ro2, c1, c2, NULL);
 
-    mpz_mod(pk->k, key, pk->p);
+    if(mpz_cmp(key, pk->p) <= 0) {
+        fprintf(stderr, "Warning: ElGamal Encrypt key may not be large enough.\n");
+    } else {
+        mpz_mod(key, key, pk->p);
+    }
+    mpz_set(pk->k, key);
 
     //Enable for testing
     mpz_set_ui(pk->k, 1);
@@ -414,7 +419,7 @@ void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
 }
 
 int BBS_check_prime(mpz_t p) {
-    if (mpz_probab_prime_p(p, 30) == 0) {
+    if (mpz_probab_prime_p(p, 100) == 0) {
         return 0;
     }
 
