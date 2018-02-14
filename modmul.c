@@ -34,13 +34,13 @@ void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key);
 void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message);
 
 void mnt_ro2(mpz_t ro2, mpz_t N);
-void mnt_omega(mp_limb_t *o, mpz_t N);
+void mnt_omega(mp_limb_t* o, mpz_t N);
 void mnt_mul(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mp_limb_t o);
 void mnt_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o);
 void mnt_red(mpz_t r, mpz_t t, mpz_t N, mp_limb_t o);
 
 int BBS_init(BBS* bbs);
-int BBS_next(BBS *bbs);
+int BBS_next(BBS* bbs);
 int BBS_check_prime(mpz_t p);
 int generate_random_number(mpz_t seed, const size_t size);
 
@@ -67,18 +67,25 @@ void init_RSA_sk(RSA_private_key **sk, mpz_t fields[9]) {
     *sk = (RSA_private_key*) malloc(sizeof(RSA_private_key));
     mpz_inits((*sk)->N,   (*sk)->d,   (*sk)->p,   (*sk)->q,   NULL);
     mpz_inits((*sk)->d_p, (*sk)->d_q, (*sk)->i_p, (*sk)->i_q, NULL);
+    mpz_inits((*sk)->ro2_p, (*sk)->ro2_q, NULL);
     mpz_init( (*sk)->c);
+    (*sk)->o_p = malloc(sizeof(mp_limb_t));
+    (*sk)->o_q = malloc(sizeof(mp_limb_t));
 
-    mpz_set((*sk)->N, fields[0]);
-    mpz_set((*sk)->d, fields[1]);
-    mpz_set((*sk)->p, fields[2]);
-    mpz_set((*sk)->q, fields[3]);
+    mpz_set((*sk)->N,   fields[0]);
+    mpz_set((*sk)->d,   fields[1]);
+    mpz_set((*sk)->p,   fields[2]);
+    mpz_set((*sk)->q,   fields[3]);
     mpz_set((*sk)->d_p, fields[4]);
     mpz_set((*sk)->d_q, fields[5]);
     mpz_set((*sk)->i_p, fields[6]);
     mpz_set((*sk)->i_q, fields[7]);
-    mpz_set((*sk)->c, fields[8]);
+    mpz_set((*sk)->c,   fields[8]);
 
+    mnt_ro2((*sk)->ro2_p, (*sk)->p);
+    mnt_ro2((*sk)->ro2_q, (*sk)->q);
+    mnt_omega((*sk)->o_p, (*sk)->p);
+    mnt_omega((*sk)->o_q, (*sk)->q);
 }
 
 void init_ElGamal_pk(ElGamal_public_key **pk, mpz_t fields[5]) {
@@ -103,10 +110,10 @@ void init_ElGamal_sk(ElGamal_private_key **sk, mpz_t fields[6]) {
     mpz_inits((*sk)->c1, (*sk)->c2, NULL);
     (*sk)->o = malloc(sizeof(mp_limb_t));
 
-    mpz_set((*sk)->p, fields[0]);
-    mpz_set((*sk)->q, fields[1]);
-    mpz_set((*sk)->g, fields[2]);
-    mpz_set((*sk)->x, fields[3]);
+    mpz_set((*sk)->p,  fields[0]);
+    mpz_set((*sk)->q,  fields[1]);
+    mpz_set((*sk)->g,  fields[2]);
+    mpz_set((*sk)->x,  fields[3]);
     mpz_set((*sk)->c1, fields[4]);
     mpz_set((*sk)->c2, fields[5]);
 
@@ -204,26 +211,30 @@ void mnt_red(mpz_t r, mpz_t t, mpz_t N, mp_limb_t o) {
 }
 
 void mnt_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
-    mpz_t T[NUMBER_OF_LIMBS], t, tmp;
-    mpz_inits(t, tmp, NULL);
+    mpz_t T[NUMBER_OF_LIMBS], t_hat, tmp, x_hat;
+    mpz_inits(t_hat, tmp, x_hat, NULL);
+
+    // initiate x_hat
+    mnt_mul(x_hat, x, ro2, N, o);
+
+    // initiate t_hat
+    mpz_set_ui(t_hat, 1);
+    mnt_mul(t_hat, t_hat, ro2, N, o);
 
     // initiate T
-    mnt_mul(tmp, x, x, N, o);
-    mpz_init_set(T[0], x);
+    mnt_mul(tmp, x_hat, x_hat, N, o);
+    mpz_init_set(T[0], x_hat);
     for (int i = 1; i < NUMBER_OF_LIMBS; i++) {
         mpz_init(T[i]);
         mnt_mul(T[i], T[i - 1], tmp, N, o);
     }
 
-    // initiate t
-    mpz_set_ui(t, 1);
-    mnt_mul(t, t, ro2, N, o);
 
     // Set i to the number of bits in y - 1
     int i = (y->_mp_size * LIMB_SIZE) - 1;
     int u, l;
 
-    while( i >= 0) {
+    while( i >= 0 ) {
         if (bit_at_position(y, i) == 0) {
             l = i;
             u = 0;
@@ -251,17 +262,17 @@ void mnt_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
         }
 
         for (int j = 0; j < i - l + 1; j++) {
-            mnt_mul(t, t, t, N, o);
+            mnt_mul(t_hat, t_hat, t_hat, N, o);
         }
 
         if (u != 0) {
-            mnt_mul(t, t, T[(u-1)/2], N, o);
+            mnt_mul(t_hat, t_hat, T[(u-1)/2], N, o);
         }
 
         i = l - 1;
     }
 
-    mpz_set(r, t);
+    mpz_set(r, t_hat);
 }
 
 int hexToZ(char ch) {
@@ -391,7 +402,6 @@ void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
     mpz_inits(cipher, NULL);
 
     //c = m^e mod (N)
-    mnt_mul(pk->m, pk->m, pk->ro2, pk->N, *pk->o);
     mnt_pow_mod(cipher, pk->m, pk->e, pk->N, pk->ro2, *pk->o);
     mnt_red(cipher, cipher, pk->N, *pk->o);
 }
@@ -402,7 +412,12 @@ void RSADecrypt(RSA_private_key *sk, mpz_t message) {
     mpz_inits(m1, m2, message, NULL);
 
     mpz_powm(m1, sk->c, sk->d_p, sk->p);
+    //mnt_pow_mod(m1, sk->c, sk->d_p, sk->p, sk->ro2_p, *sk->o_p);
+    //mnt_red(m1, m1, sk->p, *sk->o_p);
+
     mpz_powm(m2, sk->c, sk->d_q, sk->q);
+    //mnt_pow_mod(m2, sk->c, sk->d_q, sk->q, sk->ro2_q, *sk->o_q);
+    //mnt_red(m2, m2, sk->q, *sk->o_q);
 
     // qInv = (1/q) mod p
     // h = qInv.(m1 - m2) mod p
@@ -429,11 +444,9 @@ void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key) {
     mpz_set_ui(pk->k, 1);
 #endif
 
-    mnt_mul(pk->g, pk->g, pk->ro2, pk->p, *pk->o);
     mnt_pow_mod(c1, pk->g, pk->k, pk->p, pk->ro2, *pk->o);
-
-    mnt_mul(pk->h, pk->h, pk->ro2, pk->p, *pk->o);
     mnt_pow_mod(c2, pk->h, pk->k, pk->p, pk->ro2, *pk->o);
+
     mnt_mul(pk->m, pk->m, pk->ro2, pk->p, *pk->o);
     mnt_mul(c2, c2, pk->m, pk->p, *pk->o);
 
@@ -447,7 +460,6 @@ void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
 
     mpz_sub(qx, sk->q, sk->x);
 
-    mnt_mul(sk->c1, sk->c1, sk->ro2, sk->p, *sk->o);
     mnt_pow_mod(message, sk->c1, qx, sk->p, sk->ro2, *sk->o);
 
     mnt_mul(sk->c2, sk->c2, sk->ro2, sk->p, *sk->o);
@@ -472,7 +484,6 @@ int BBS_check_prime(mpz_t p) {
 }
 
 int BBS_next(BBS *bbs) {
-    mnt_mul(bbs->s, bbs->s, bbs->ro2, bbs->N, *bbs->o);
     mnt_pow_mod(bbs->s, bbs->s, bbs->two, bbs->N, bbs->ro2, *bbs->o);
     mnt_red(bbs->s, bbs->s, bbs->N, *bbs->o);
 

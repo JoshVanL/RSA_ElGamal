@@ -1,10 +1,12 @@
 help:
-	# all:   build and run tests
-	# build: build file
-	# check: run tests
-	# clean: clean build
+	# all:         run all
+	# build:       build file
+	# build_debug: build file in debug mode (ElGamal Encrypt uses k=1)
+	# test:        run tests
+	# check:       build in debug mode then test
+	# clean:       clean build
 
-all: build check
+all: build check clean
 
 build:
 	gcc -Wall -std=gnu99 -O3 -o modmul -lgmp modmul.c

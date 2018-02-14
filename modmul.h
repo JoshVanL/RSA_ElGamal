@@ -25,7 +25,7 @@ typedef struct {
     mpz_t N, e;
     mpz_t m;
     mpz_t ro2;
-    mp_limb_t *o;
+    mp_limb_t* o;
 } RSA_public_key;
 
 typedef struct {
@@ -34,6 +34,8 @@ typedef struct {
     mpz_t d_p, d_q;
     mpz_t i_p, i_q;
     mpz_t c;
+    mpz_t ro2_p, ro2_q;
+    mp_limb_t *o_p, *o_q;
 } RSA_private_key;
 
 typedef struct {
@@ -42,7 +44,7 @@ typedef struct {
     mpz_t k;
     mpz_t m;
     mpz_t ro2;
-    mp_limb_t *o;
+    mp_limb_t* o;
 } ElGamal_public_key;
 
 typedef struct {
@@ -51,7 +53,7 @@ typedef struct {
     mpz_t x;
     mpz_t c1, c2;
     mpz_t ro2;
-    mp_limb_t *o;
+    mp_limb_t* o;
 } ElGamal_private_key;
 
 typedef struct {
@@ -59,5 +61,5 @@ typedef struct {
     mpz_t N;
     mpz_t s;
     mpz_t ro2, two;
-    mp_limb_t *o;
+    mp_limb_t* o;
 } BBS;
