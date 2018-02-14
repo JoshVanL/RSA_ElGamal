@@ -14,10 +14,8 @@
 #define NUMBER_OF_LIMBS 32
 #define LIMB_SIZE 64
 #define WORD_LENGTH 256
-#define LAMDA_SIZE 1024
 
 int max(int x, int y);
-int generate_random_number(mpz_t seed, const size_t size);
 int readGroup(int size, mpz_t field[size]);
 int hexToZ(char ch);
 char zToHex(int n);
@@ -44,6 +42,7 @@ void mnt_red(mpz_t r, mpz_t t, mpz_t N, mp_limb_t o);
 int BBS_init(BBS* bbs);
 int BBS_next(BBS *bbs);
 int BBS_check_prime(mpz_t p);
+int generate_random_number(mpz_t seed, const size_t size);
 
 void stage1();
 void stage2();
@@ -244,14 +243,14 @@ void mnt_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
 
             // Check whether i and l are in the same limb
             // If not then get bits from each limb appropriately
-            if (i_limb == l_limb) {
+            if ( i_limb == l_limb ) {
                 u = get_word(y->_mp_d[i_limb], l_bits, i_bits);
             } else {
                 u = (get_word(y->_mp_d[i_limb], 0, i_bits) << (LIMB_SIZE - l_bits)) | get_word(y->_mp_d[l_limb], l_bits, LIMB_SIZE - 1);
             }
         }
 
-        for (int j = 0; j <= i - l; j++) {
+        for (int j = 0; j < i - l + 1; j++) {
             mnt_mul(t, t, t, N, o);
         }
 
