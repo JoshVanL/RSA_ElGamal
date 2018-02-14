@@ -1,7 +1,11 @@
-///////////////////////////
-// Joshua Van Leeuwen    //
-// University of Bristol //
-///////////////////////////
+
+///////////////////////////////////////////////////////////
+//                                                       //
+//                 Joshua Van Leeuwen                    //
+//                                                       //
+//                University of Bristol                  //
+//                                                       //
+///////////////////////////////////////////////////////////
 
 #include "modmul.h"
 
@@ -12,14 +16,52 @@
 #define WORD_LENGTH 256
 #define LAMDA_SIZE 1024
 
+int max(int x, int y);
+int generate_random_number(mpz_t seed, const size_t size);
+int readGroup(int size, mpz_t field[size]);
+int hexToZ(char ch);
+char zToHex(int n);
+void zToStr(char* str, mpz_t num);
+void strToZ(mpz_t num, char* str);
+void print_number(mpz_t x);
+
+void init_RSA_pk(RSA_public_key **pk, mpz_t fields[3]);
+void init_RSA_sk(RSA_private_key **sk, mpz_t fields[9]);
+void init_ElGamal_pk(ElGamal_public_key **pk, mpz_t fields[5]);
+void init_ElGamal_sk(ElGamal_private_key **sk, mpz_t fields[6]);
+
+void RSAEncrypt(RSA_public_key *pk, mpz_t cipher);
+void RSADecrypt(RSA_private_key *sk, mpz_t message);
+void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key);
+void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message);
+
+void mnt_ro2(mpz_t ro2, mpz_t N);
+void mnt_omega(mp_limb_t *o, mpz_t N);
+void mnt_mul(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mp_limb_t o);
+void mnt_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o);
+void mnt_red(mpz_t r, mpz_t t, mpz_t N, mp_limb_t o);
+
+int BBS_init(BBS* bbs);
+int BBS_next(BBS *bbs);
+int BBS_check_prime(mpz_t p);
+
+void stage1();
+void stage2();
+void stage3();
+void stage4();
+
 void init_RSA_pk(RSA_public_key **pk, mpz_t fields[3]) {
     *pk = (RSA_public_key*) malloc(sizeof(RSA_public_key));
-    mpz_inits((*pk)->N, (*pk)->e,  NULL);
+    mpz_inits((*pk)->N, (*pk)->e, (*pk)->ro2,  NULL);
     mpz_init((*pk)->m);
+    (*pk)->o = malloc(sizeof(mp_limb_t));
 
     mpz_set((*pk)->N, fields[0]);
     mpz_set((*pk)->e, fields[1]);
     mpz_set((*pk)->m, fields[2]);
+
+    mnt_ro2((*pk)->ro2, (*pk)->N);
+    mnt_omega((*pk)->o, (*pk)->N);
 }
 
 void init_RSA_sk(RSA_private_key **sk, mpz_t fields[9]) {
@@ -42,20 +84,25 @@ void init_RSA_sk(RSA_private_key **sk, mpz_t fields[9]) {
 
 void init_ElGamal_pk(ElGamal_public_key **pk, mpz_t fields[5]) {
     *pk = (ElGamal_public_key*) malloc(sizeof(ElGamal_public_key));
-    mpz_inits((*pk)->p, (*pk)->q, (*pk)->g, (*pk)->h, NULL);
+    mpz_inits((*pk)->p, (*pk)->q, (*pk)->g, (*pk)->h, (*pk)->ro2, NULL);
     mpz_init( (*pk)->m);
+    (*pk)->o = malloc(sizeof(mp_limb_t));
 
     mpz_set((*pk)->p, fields[0]);
     mpz_set((*pk)->q, fields[1]);
     mpz_set((*pk)->g, fields[2]);
     mpz_set((*pk)->h, fields[3]);
     mpz_set((*pk)->m, fields[4]);
+
+    mnt_ro2((*pk)->ro2, (*pk)->p);
+    mnt_omega((*pk)->o, (*pk)->p);
 }
 
 void init_ElGamal_sk(ElGamal_private_key **sk, mpz_t fields[6]) {
     *sk = (ElGamal_private_key*) malloc(sizeof(ElGamal_private_key));
-    mpz_inits((*sk)->p,  (*sk)->q,  (*sk)->g, (*sk)->x, NULL);
+    mpz_inits((*sk)->p,  (*sk)->q,  (*sk)->g, (*sk)->x, (*sk)->ro2, NULL);
     mpz_inits((*sk)->c1, (*sk)->c2, NULL);
+    (*sk)->o = malloc(sizeof(mp_limb_t));
 
     mpz_set((*sk)->p, fields[0]);
     mpz_set((*sk)->q, fields[1]);
@@ -63,6 +110,9 @@ void init_ElGamal_sk(ElGamal_private_key **sk, mpz_t fields[6]) {
     mpz_set((*sk)->x, fields[3]);
     mpz_set((*sk)->c1, fields[4]);
     mpz_set((*sk)->c2, fields[5]);
+
+    mnt_ro2((*sk)->ro2, (*sk)->p);
+    mnt_omega((*sk)->o, (*sk)->p);
 }
 
 int max(int x, int y) {
@@ -339,20 +389,15 @@ int generate_random_number(mpz_t seed, const size_t size) {
 }
 
 void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
-    mp_limb_t o;
-    mpz_t ro2;
-    mpz_inits(cipher, ro2, NULL);
-
-    mnt_omega(&o, pk->N);
-    mnt_ro2(ro2, pk->N);
+    mpz_inits(cipher, NULL);
 
     //c = m^e mod (N)
-    mnt_mul(pk->m, pk->m, ro2, pk->N, o);
-    mnt_pow_mod(cipher, pk->m, pk->e, pk->N, ro2, o);
-    mnt_red(cipher, cipher, pk->N, o);
+    mnt_mul(pk->m, pk->m, pk->ro2, pk->N, *pk->o);
+    mnt_pow_mod(cipher, pk->m, pk->e, pk->N, pk->ro2, *pk->o);
+    mnt_red(cipher, cipher, pk->N, *pk->o);
 }
 
-// Uses Chinese Remainder Theorm
+// Uses Chinese Remainder Theorem
 void RSADecrypt(RSA_private_key *sk, mpz_t message) {
     mpz_t m1, m2;
     mpz_inits(m1, m2, message, NULL);
@@ -371,9 +416,7 @@ void RSADecrypt(RSA_private_key *sk, mpz_t message) {
 }
 
 void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key) {
-    mpz_t ro2;
-    mp_limb_t o;
-    mpz_inits(pk->k, ro2, c1, c2, NULL);
+    mpz_inits(pk->k, c1, c2, NULL);
 
     if(mpz_cmp(key, pk->p) <= 0) {
         fprintf(stderr, "Warning: ElGamal Encrypt key may not be large enough.\n");
@@ -383,39 +426,35 @@ void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key) {
     mpz_set(pk->k, key);
 
     //Enable for testing
+#if defined(DEBUG)
     mpz_set_ui(pk->k, 1);
+#endif
 
-    mnt_omega(&o, pk->p);
-    mnt_ro2(ro2, pk->p);
+    mnt_mul(pk->g, pk->g, pk->ro2, pk->p, *pk->o);
+    mnt_pow_mod(c1, pk->g, pk->k, pk->p, pk->ro2, *pk->o);
 
-    mnt_mul(pk->g, pk->g, ro2, pk->p, o);
-    mnt_pow_mod(c1, pk->g, pk->k, pk->p, ro2, o);
+    mnt_mul(pk->h, pk->h, pk->ro2, pk->p, *pk->o);
+    mnt_pow_mod(c2, pk->h, pk->k, pk->p, pk->ro2, *pk->o);
+    mnt_mul(pk->m, pk->m, pk->ro2, pk->p, *pk->o);
+    mnt_mul(c2, c2, pk->m, pk->p, *pk->o);
 
-    mnt_mul(pk->h, pk->h, ro2, pk->p, o);
-    mnt_pow_mod(c2, pk->h, pk->k, pk->p, ro2, o);
-    mnt_mul(pk->m, pk->m, ro2, pk->p, o);
-    mnt_mul(c2, c2, pk->m, pk->p, o);
-
-    mnt_red(c1, c1, pk->p, o);
-    mnt_red(c2, c2, pk->p, o);
+    mnt_red(c1, c1, pk->p, *pk->o);
+    mnt_red(c2, c2, pk->p, *pk->o);
 }
 
 void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
-    mp_limb_t o;
-    mpz_t ro2, qx;
-    mpz_inits(ro2, qx, message, NULL);
+    mpz_t qx;
+    mpz_inits(qx, message, NULL);
 
-    mnt_omega(&o, sk->p);
-    mnt_ro2(ro2, sk->p);
     mpz_sub(qx, sk->q, sk->x);
 
-    mnt_mul(sk->c1, sk->c1, ro2, sk->p, o);
-    mnt_pow_mod(message, sk->c1, qx, sk->p, ro2, o);
+    mnt_mul(sk->c1, sk->c1, sk->ro2, sk->p, *sk->o);
+    mnt_pow_mod(message, sk->c1, qx, sk->p, sk->ro2, *sk->o);
 
-    mnt_mul(sk->c2, sk->c2, ro2, sk->p, o);
-    mnt_mul(message, message, sk->c2, sk->p, o);
+    mnt_mul(sk->c2, sk->c2, sk->ro2, sk->p, *sk->o);
+    mnt_mul(message, message, sk->c2, sk->p, *sk->o);
 
-    mnt_red(message, message, sk->p, o);
+    mnt_red(message, message, sk->p, *sk->o);
 }
 
 int BBS_check_prime(mpz_t p) {
@@ -433,29 +472,44 @@ int BBS_check_prime(mpz_t p) {
     return 0;
 }
 
-void BBS_init(BBS* bbs) {
+int BBS_next(BBS *bbs) {
+    mnt_mul(bbs->s, bbs->s, bbs->ro2, bbs->N, *bbs->o);
+    mnt_pow_mod(bbs->s, bbs->s, bbs->two, bbs->N, bbs->ro2, *bbs->o);
+    mnt_red(bbs->s, bbs->s, bbs->N, *bbs->o);
+
+    return (int) (bbs->s->_mp_d[0] & 1);
+}
+
+int BBS_init(BBS* bbs) {
     mpz_t p, q, N, s;
-    mpz_t gcd;
-    mpz_inits(p, q, N, s, gcd, NULL);
-    mpz_inits(bbs->p, bbs->q, bbs->N, bbs->s, NULL);
+    mpz_t gcd, ro2;
+    mpz_inits(p, q, N, s, gcd, ro2, NULL);
+    mpz_inits(bbs->p, bbs->q, bbs->N, bbs->s, bbs->ro2, bbs->two, NULL);
     mpz_set_ui(p, 0);
     mpz_set_ui(q, 0);
     mpz_set_ui(gcd, 0);
+    mpz_set_ui(bbs->two, 2);
 
     while(BBS_check_prime(p) == 0) {
-        generate_random_number(p, sizeof(mp_limb_t)*NUMBER_OF_LIMBS);
+        if(generate_random_number(p, sizeof(mp_limb_t)*NUMBER_OF_LIMBS) < 0) {
+            return -1;
+        }
         mpz_nextprime(p, p);
     }
 
     while(BBS_check_prime(q) == 0) {
-        generate_random_number(q, sizeof(mp_limb_t)*NUMBER_OF_LIMBS);
+        if (generate_random_number(q, sizeof(mp_limb_t)*NUMBER_OF_LIMBS) < 0) {
+            return -1;
+        }
         mpz_nextprime(q, q);
     }
 
     mpz_mul(N, p, q);
 
     while(!(mpz_cmp_ui(gcd, 1) == 0)) {
-        generate_random_number(s, sizeof(mp_limb_t)*NUMBER_OF_LIMBS);
+        if (generate_random_number(s, sizeof(mp_limb_t)*NUMBER_OF_LIMBS) < 0) {
+            return -1;
+        }
         mpz_mod(s, s, N);
         if (mpz_cmp(s, N) >= 0) {
             mpz_sub(s, s, N);
@@ -464,20 +518,20 @@ void BBS_init(BBS* bbs) {
         mpz_gcd(gcd, s, N);
     }
 
-    mpz_powm_ui(s, s, 2, N);
+    bbs->o = malloc(sizeof(mp_limb_t));
+    mnt_omega(bbs->o, N);
+    mnt_ro2(ro2, N);
 
     mpz_set(bbs->p, p);
     mpz_set(bbs->q, q);
     mpz_set(bbs->N, N);
     mpz_set(bbs->s, s);
+    mpz_set(bbs->ro2, ro2);
+
+    BBS_next(bbs);
+
+    return 0;
 }
-
-int BBS_next(BBS *bbs) {
-    mpz_powm_ui(bbs->s, bbs->s, 2, bbs->N);
-
-    return (int) (bbs->s->_mp_d[0] & 1);
-}
-
 
 // m^e (mod N)
 void stage1() {
@@ -527,7 +581,9 @@ void stage3() {
     }
 
     BBS bbs;
-    BBS_init(&bbs);
+    if (BBS_init(&bbs) < 0) {
+        return;
+    }
 
     while(readGroup(exp_size, fields) != -1) {
         BBS_next(&bbs);

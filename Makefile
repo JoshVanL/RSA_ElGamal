@@ -9,7 +9,10 @@ all: build check
 build:
 	gcc -Wall -std=gnu99 -O3 -o modmul -lgmp modmul.c
 
-check: build test
+build_debug:
+	gcc -Wall -std=gnu99 -O3 -o modmul -lgmp -DDEBUG modmul.c
+
+check: build_debug test
 
 test:
 	for number in 1 2 3 4 ; do \
