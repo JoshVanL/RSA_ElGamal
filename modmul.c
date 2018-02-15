@@ -22,6 +22,7 @@ char zToHex(int n);
 void zToStr(char* str, mpz_t num);
 void strToZ(mpz_t num, char* str);
 void print_number(mpz_t x);
+int concanonate(int x, int y);
 
 void init_RSA_pk(RSA_public_key **pk, mpz_t fields[3]);
 void init_RSA_sk(RSA_private_key **sk, mpz_t fields[9]);
@@ -49,6 +50,7 @@ void stage2();
 void stage3();
 void stage4();
 
+// Initiate RSA public key
 void init_RSA_pk(RSA_public_key **pk, mpz_t fields[3]) {
     *pk = (RSA_public_key*) malloc(sizeof(RSA_public_key));
     mpz_inits((*pk)->N, (*pk)->e, (*pk)->ro2,  NULL);
@@ -63,6 +65,7 @@ void init_RSA_pk(RSA_public_key **pk, mpz_t fields[3]) {
     mnt_omega((*pk)->o, (*pk)->N);
 }
 
+// Initiate RSA secret key
 void init_RSA_sk(RSA_private_key **sk, mpz_t fields[9]) {
     *sk = (RSA_private_key*) malloc(sizeof(RSA_private_key));
     mpz_inits((*sk)->N,   (*sk)->d,   (*sk)->p,   (*sk)->q,   NULL);
@@ -88,6 +91,7 @@ void init_RSA_sk(RSA_private_key **sk, mpz_t fields[9]) {
     mnt_omega((*sk)->o_q, (*sk)->q);
 }
 
+// Initiate ElGamal public key
 void init_ElGamal_pk(ElGamal_public_key **pk, mpz_t fields[5]) {
     *pk = (ElGamal_public_key*) malloc(sizeof(ElGamal_public_key));
     mpz_inits((*pk)->p, (*pk)->q, (*pk)->g, (*pk)->h, (*pk)->ro2, NULL);
@@ -104,6 +108,7 @@ void init_ElGamal_pk(ElGamal_public_key **pk, mpz_t fields[5]) {
     mnt_omega((*pk)->o, (*pk)->p);
 }
 
+// Initiate ElGamal secret key
 void init_ElGamal_sk(ElGamal_private_key **sk, mpz_t fields[6]) {
     *sk = (ElGamal_private_key*) malloc(sizeof(ElGamal_private_key));
     mpz_inits((*sk)->p,  (*sk)->q,  (*sk)->g, (*sk)->x, (*sk)->ro2, NULL);
@@ -121,6 +126,7 @@ void init_ElGamal_sk(ElGamal_private_key **sk, mpz_t fields[6]) {
     mnt_omega((*sk)->o, (*sk)->p);
 }
 
+// Calculate max of two ints
 int max(int x, int y) {
     if (x > y) {
         return x;
@@ -129,16 +135,24 @@ int max(int x, int y) {
     return y;
 }
 
+// Get the bit of a given position (0|1)
 int bit_at_position(mpz_t x, int n) {
     int limb = n / LIMB_SIZE;
     int pos = n % LIMB_SIZE;
     return ((x->_mp_d[limb] >> pos) & 1);
 }
 
+// Get the bits of a given limb by some range
 int get_word(mp_limb_t x, int start, int end) {
     return (x << (LIMB_SIZE - 1 - end)) >> (LIMB_SIZE - 1 - end + start);
 }
 
+// bitwise or of two ints
+int concanonate(int x, int y) {
+    return x | y;
+}
+
+// Calculate the omega (Montgomery)
 void mnt_omega(mp_limb_t *o, mpz_t N) {
     *o = 1;
     for (int i = 1; i < LIMB_SIZE; i++) {
@@ -147,6 +161,7 @@ void mnt_omega(mp_limb_t *o, mpz_t N) {
     *o = -*o;
 }
 
+// Calculate rho for Montgomery (squared)
 void mnt_ro2(mpz_t ro2, mpz_t N) {
     mpz_init(ro2);
     mpz_set_ui(ro2, 1);
@@ -160,6 +175,7 @@ void mnt_ro2(mpz_t ro2, mpz_t N) {
     }
 }
 
+// Perform Montgomery Multiplication
 void mnt_mul(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mp_limb_t o) {
     mpz_t yix, uiN, res;
     mpz_inits(res, yix, uiN, NULL);
@@ -187,12 +203,13 @@ void mnt_mul(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mp_limb_t o) {
     mpz_set(r, res);
 }
 
+// Perform Montgomery Reduction
 void mnt_red(mpz_t r, mpz_t t, mpz_t N, mp_limb_t o) {
     mpz_t uiN, bi;
     mpz_inits(uiN, bi, NULL);
     mpz_set(r, t);
 
-    // Divide by b at each iteration
+    // Divide by b at each iteration instead of after loop
     for (int i = 0; i < N->_mp_size; i++) {
         mp_limb_t ui = r->_mp_d[0] * o;
 
@@ -210,25 +227,25 @@ void mnt_red(mpz_t r, mpz_t t, mpz_t N, mp_limb_t o) {
     }
 }
 
+// Perform Montgomery exponential using "windowed" exponentiation
 void mnt_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
-    mpz_t T[NUMBER_OF_LIMBS], t_hat, tmp, x_hat;
-    mpz_inits(t_hat, tmp, x_hat, NULL);
-
-    // initiate x_hat
-    mnt_mul(x_hat, x, ro2, N, o);
+    mpz_t T[NUMBER_OF_LIMBS], t_hat, x0, x_hat;
+    mpz_inits(t_hat, x_hat, x0, NULL);
 
     // initiate t_hat
     mpz_set_ui(t_hat, 1);
     mnt_mul(t_hat, t_hat, ro2, N, o);
 
+    // initiate x_hat
+    mnt_mul(x_hat, x, ro2, N, o);
+
     // initiate T
-    mnt_mul(tmp, x_hat, x_hat, N, o);
+    mnt_mul(x0, x_hat, x_hat, N, o);
     mpz_init_set(T[0], x_hat);
     for (int i = 1; i < NUMBER_OF_LIMBS; i++) {
         mpz_init(T[i]);
-        mnt_mul(T[i], T[i - 1], tmp, N, o);
+        mnt_mul(T[i], T[i - 1], x0, N, o);
     }
-
 
     // Set i to the number of bits in y - 1
     int i = (y->_mp_size * LIMB_SIZE) - 1;
@@ -257,7 +274,9 @@ void mnt_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
             if ( i_limb == l_limb ) {
                 u = get_word(y->_mp_d[i_limb], l_bits, i_bits);
             } else {
-                u = (get_word(y->_mp_d[i_limb], 0, i_bits) << (LIMB_SIZE - l_bits)) | get_word(y->_mp_d[l_limb], l_bits, LIMB_SIZE - 1);
+                int ii = get_word(y->_mp_d[i_limb], 0, i_bits) << (LIMB_SIZE - l_bits);
+                int ll = get_word(y->_mp_d[l_limb], l_bits, LIMB_SIZE - 1);
+                u = concanonate(ii, ll);
             }
         }
 
@@ -275,6 +294,7 @@ void mnt_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
     mpz_set(r, t_hat);
 }
 
+// Convert a hexadecimal char to it's integer representation
 int hexToZ(char ch) {
     if (ch >= '0' && ch <= '9') {
         return ch - '0';
@@ -291,6 +311,7 @@ int hexToZ(char ch) {
     return -1;
 }
 
+// Convert a number to it's hexadecimal representation
 char zToHex(int n) {
     if (n > 9) {
         return 'A' + (n - 10);
@@ -298,6 +319,7 @@ char zToHex(int n) {
     return n + '0';
 }
 
+// Convert a number to it's hexadecimal string representation
 void zToStr(char* str, mpz_t num) {
     mpz_t power, quot;
     mpz_inits(power, quot, NULL);
@@ -331,6 +353,7 @@ void zToStr(char* str, mpz_t num) {
     str[loc - off] = '\0';
 }
 
+// Convert a hexadecimal string to it's number representation
 void strToZ(mpz_t num, char* str) {
     int pow = 0;
     int n = strcspn(str, "\n\r");
@@ -348,6 +371,7 @@ void strToZ(mpz_t num, char* str) {
     }
 }
 
+// Print a number to Stdout in it's hexadecimal representation
 void print_number(mpz_t x) {
     char* out = malloc(sizeof(char)*255);
     zToStr(out, x);
@@ -355,6 +379,7 @@ void print_number(mpz_t x) {
 }
 
 
+// Read a size number of hexadecimal lines
 int readGroup(int size, mpz_t field[size]) {
     for (int i=0; i < size; i++) {
         char* line = NULL;
@@ -374,6 +399,7 @@ int readGroup(int size, mpz_t field[size]) {
     return 0;
 }
 
+// Generate a size number of random bits, reading from /dev/random
 int generate_random_number(mpz_t seed, const size_t size) {
     char* dat = (char*) malloc(sizeof(char)*size);
 
@@ -398,6 +424,7 @@ int generate_random_number(mpz_t seed, const size_t size) {
     return 0;
 }
 
+// Perform RSA encryption
 void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
     mpz_inits(cipher, NULL);
 
@@ -406,22 +433,19 @@ void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
     mnt_red(cipher, cipher, pk->N, *pk->o);
 }
 
-// Uses Chinese Remainder Theorem
+// Perform RSA decryption using the Chinese Remainder Theorem (CRT)
 void RSADecrypt(RSA_private_key *sk, mpz_t message) {
     mpz_t m1, m2;
     mpz_inits(m1, m2, message, NULL);
 
-    mpz_powm(m1, sk->c, sk->d_p, sk->p);
-    //mnt_pow_mod(m1, sk->c, sk->d_p, sk->p, sk->ro2_p, *sk->o_p);
-    //mnt_red(m1, m1, sk->p, *sk->o_p);
+    mpz_mod(m1, sk->c, sk->p);
+    mnt_pow_mod(m1, m1, sk->d_p, sk->p, sk->ro2_p, *sk->o_p);
+    mnt_red(m1, m1, sk->p, *sk->o_p);
 
-    mpz_powm(m2, sk->c, sk->d_q, sk->q);
-    //mnt_pow_mod(m2, sk->c, sk->d_q, sk->q, sk->ro2_q, *sk->o_q);
-    //mnt_red(m2, m2, sk->q, *sk->o_q);
+    mpz_mod(m2, sk->c, sk->q);
+    mnt_pow_mod(m2, m2, sk->d_q, sk->q, sk->ro2_q, *sk->o_q);
+    mnt_red(m2, m2, sk->q, *sk->o_q);
 
-    // qInv = (1/q) mod p
-    // h = qInv.(m1 - m2) mod p
-    // m = m2 + h.q
     mpz_sub(m1, m1, m2);
     mpz_mul(m1, sk->i_q, m1);
     mpz_mod(m1, m1, sk->p);
@@ -429,6 +453,7 @@ void RSADecrypt(RSA_private_key *sk, mpz_t message) {
     mpz_add(message, m1, m2);
 }
 
+// Perform ElGamal encryption using a randomly generated k
 void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key) {
     mpz_inits(pk->k, c1, c2, NULL);
 
@@ -439,7 +464,7 @@ void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key) {
     }
     mpz_set(pk->k, key);
 
-    //Enable for testing
+    // enable for testing
 #if defined(DEBUG)
     mpz_set_ui(pk->k, 1);
 #endif
@@ -454,6 +479,7 @@ void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key) {
     mnt_red(c2, c2, pk->p, *pk->o);
 }
 
+// Perform ElGamal decryption
 void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
     mpz_t qx;
     mpz_inits(qx, message, NULL);
@@ -468,6 +494,7 @@ void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
     mnt_red(message, message, sk->p, *sk->o);
 }
 
+// Ensure BBS p or q is prime and satisfies = 3 (mod 4)
 int BBS_check_prime(mpz_t p) {
     if (mpz_probab_prime_p(p, 100) == 0) {
         return 0;
@@ -483,6 +510,7 @@ int BBS_check_prime(mpz_t p) {
     return 0;
 }
 
+// Generate the next BBS state
 int BBS_next(BBS *bbs) {
     mnt_pow_mod(bbs->s, bbs->s, bbs->two, bbs->N, bbs->ro2, *bbs->o);
     mnt_red(bbs->s, bbs->s, bbs->N, *bbs->o);
@@ -490,6 +518,7 @@ int BBS_next(BBS *bbs) {
     return (int) (bbs->s->_mp_d[0] & 1);
 }
 
+// Initiate BBS with initial state
 int BBS_init(BBS* bbs) {
     mpz_t p, q, N, s;
     mpz_t gcd, ro2;
@@ -543,7 +572,7 @@ int BBS_init(BBS* bbs) {
     return 0;
 }
 
-// m^e (mod N)
+// Perform first stage (RSA encryption)
 void stage1() {
     const int exp_size = 3;
 
@@ -563,6 +592,7 @@ void stage1() {
     }
 }
 
+// Perform second stage (RSA decryption)
 void stage2() {
     const int exp_size = 9;
 
@@ -582,6 +612,7 @@ void stage2() {
     }
 }
 
+// Perform third stage (ElGamal encryption)
 void stage3() {
     const int exp_size = 5;
 
@@ -609,6 +640,7 @@ void stage3() {
     }
 }
 
+// Perform fourth stage (ElGamal decryption)
 void stage4() {
     const int exp_size = 6;
 
@@ -628,6 +660,7 @@ void stage4() {
     }
 }
 
+// Parse CLI arguments
 int main( int argc, char* argv[] ) {
     if( 2 != argc ) {
         fprintf(stderr, "Expected 1 argument; got=%d\n", argc-1);
