@@ -53,7 +53,9 @@ void stage4();
 // Initiate RSA public key
 void init_RSA_pk(RSA_public_key **pk, mpz_t fields[3]) {
     *pk = (RSA_public_key*) malloc(sizeof(RSA_public_key));
-    mpz_inits((*pk)->N, (*pk)->e, (*pk)->ro2,  NULL);
+    mpz_init((*pk)->N);
+    mpz_init((*pk)->e);
+    mpz_init((*pk)->ro2);
     mpz_init((*pk)->m);
     (*pk)->o = malloc(sizeof(mp_limb_t));
 
@@ -68,9 +70,16 @@ void init_RSA_pk(RSA_public_key **pk, mpz_t fields[3]) {
 // Initiate RSA secret key
 void init_RSA_sk(RSA_private_key **sk, mpz_t fields[9]) {
     *sk = (RSA_private_key*) malloc(sizeof(RSA_private_key));
-    mpz_inits((*sk)->N,   (*sk)->d,   (*sk)->p,   (*sk)->q,   NULL);
-    mpz_inits((*sk)->d_p, (*sk)->d_q, (*sk)->i_p, (*sk)->i_q, NULL);
-    mpz_inits((*sk)->ro2_p, (*sk)->ro2_q, NULL);
+    mpz_init((*sk)->N);
+    mpz_init((*sk)->d);
+    mpz_init((*sk)->p);
+    mpz_init((*sk)->q);
+    mpz_init((*sk)->d_p);
+    mpz_init((*sk)->d_q);
+    mpz_init((*sk)->i_p);
+    mpz_init((*sk)->i_q);
+    mpz_init((*sk)->ro2_p);
+    mpz_init((*sk)->ro2_q);
     mpz_init( (*sk)->c);
     (*sk)->o_p = malloc(sizeof(mp_limb_t));
     (*sk)->o_q = malloc(sizeof(mp_limb_t));
@@ -94,8 +103,12 @@ void init_RSA_sk(RSA_private_key **sk, mpz_t fields[9]) {
 // Initiate ElGamal public key
 void init_ElGamal_pk(ElGamal_public_key **pk, mpz_t fields[5]) {
     *pk = (ElGamal_public_key*) malloc(sizeof(ElGamal_public_key));
-    mpz_inits((*pk)->p, (*pk)->q, (*pk)->g, (*pk)->h, (*pk)->ro2, NULL);
-    mpz_init( (*pk)->m);
+    mpz_init((*pk)->p);
+    mpz_init((*pk)->q);
+    mpz_init((*pk)->g);
+    mpz_init((*pk)->h);
+    mpz_init((*pk)->ro2);
+    mpz_init((*pk)->m);
     (*pk)->o = malloc(sizeof(mp_limb_t));
 
     mpz_set((*pk)->p, fields[0]);
@@ -111,8 +124,13 @@ void init_ElGamal_pk(ElGamal_public_key **pk, mpz_t fields[5]) {
 // Initiate ElGamal secret key
 void init_ElGamal_sk(ElGamal_private_key **sk, mpz_t fields[6]) {
     *sk = (ElGamal_private_key*) malloc(sizeof(ElGamal_private_key));
-    mpz_inits((*sk)->p,  (*sk)->q,  (*sk)->g, (*sk)->x, (*sk)->ro2, NULL);
-    mpz_inits((*sk)->c1, (*sk)->c2, NULL);
+    mpz_init((*sk)->p);
+    mpz_init((*sk)->q);
+    mpz_init((*sk)->g);
+    mpz_init((*sk)->x);
+    mpz_init((*sk)->ro2);
+    mpz_init((*sk)->c1);
+    mpz_init((*sk)->c2);
     (*sk)->o = malloc(sizeof(mp_limb_t));
 
     mpz_set((*sk)->p,  fields[0]);
@@ -178,7 +196,9 @@ void mnt_ro2(mpz_t ro2, mpz_t N) {
 // Perform Montgomery Multiplication
 void mnt_mul(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mp_limb_t o) {
     mpz_t yix, uiN, res;
-    mpz_inits(res, yix, uiN, NULL);
+    mpz_init(res);
+    mpz_init(yix);
+    mpz_init(uiN);
     mpz_set_ui(res, 0);
 
     for (int i = 0; i < N->_mp_size; i++) {
@@ -206,7 +226,8 @@ void mnt_mul(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mp_limb_t o) {
 // Perform Montgomery Reduction
 void mnt_red(mpz_t r, mpz_t t, mpz_t N, mp_limb_t o) {
     mpz_t uiN, bi;
-    mpz_inits(uiN, bi, NULL);
+    mpz_init(uiN);
+    mpz_init(bi);
     mpz_set(r, t);
 
     // Divide by b at each iteration instead of after loop
@@ -230,7 +251,9 @@ void mnt_red(mpz_t r, mpz_t t, mpz_t N, mp_limb_t o) {
 // Perform Montgomery exponential using "windowed" exponentiation
 void mnt_pow_mod(mpz_t r, mpz_t x, mpz_t y, mpz_t N, mpz_t ro2, mp_limb_t o) {
     mpz_t T[NUMBER_OF_LIMBS], t_hat, x0, x_hat;
-    mpz_inits(t_hat, x_hat, x0, NULL);
+    mpz_init(t_hat);
+    mpz_init(x_hat);
+    mpz_init(x0);
 
     // initiate t_hat
     mpz_set_ui(t_hat, 1);
@@ -322,7 +345,8 @@ char zToHex(int n) {
 // Convert a number to it's hexadecimal string representation
 void zToStr(char* str, mpz_t num) {
     mpz_t power, quot;
-    mpz_inits(power, quot, NULL);
+    mpz_init(power);
+    mpz_init(quot);
 
     int loc = 0;
     for(int i=(WORD_LENGTH - 1); i>= 0; i--) {
@@ -426,7 +450,7 @@ int generate_random_number(mpz_t seed, const size_t size) {
 
 // Perform RSA encryption
 void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
-    mpz_inits(cipher, NULL);
+    mpz_init(cipher);
 
     //c = m^e mod (N)
     mnt_pow_mod(cipher, pk->m, pk->e, pk->N, pk->ro2, *pk->o);
@@ -436,7 +460,9 @@ void RSAEncrypt(RSA_public_key *pk, mpz_t cipher) {
 // Perform RSA decryption using the Chinese Remainder Theorem (CRT)
 void RSADecrypt(RSA_private_key *sk, mpz_t message) {
     mpz_t m1, m2;
-    mpz_inits(m1, m2, message, NULL);
+    mpz_init(m1);
+    mpz_init(m2);
+    mpz_init(message);
 
     mpz_mod(m1, sk->c, sk->p);
     mnt_pow_mod(m1, m1, sk->d_p, sk->p, sk->ro2_p, *sk->o_p);
@@ -455,7 +481,9 @@ void RSADecrypt(RSA_private_key *sk, mpz_t message) {
 
 // Perform ElGamal encryption using a randomly generated k
 void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key) {
-    mpz_inits(pk->k, c1, c2, NULL);
+    mpz_init(pk->k);
+    mpz_init(c1);
+    mpz_init(c2);
 
     if(mpz_cmp(key, pk->p) <= 0) {
         fprintf(stderr, "Warning: ElGamal Encrypt key may not be large enough.\n");
@@ -482,7 +510,8 @@ void ElGamalEncrypt(ElGamal_public_key *pk, mpz_t c1, mpz_t c2, mpz_t key) {
 // Perform ElGamal decryption
 void ElGamalDecryption(ElGamal_private_key *sk, mpz_t message) {
     mpz_t qx;
-    mpz_inits(qx, message, NULL);
+    mpz_init(qx);
+    mpz_init(message);
 
     mpz_sub(qx, sk->q, sk->x);
 
@@ -522,8 +551,18 @@ int BBS_next(BBS *bbs) {
 int BBS_init(BBS* bbs) {
     mpz_t p, q, N, s;
     mpz_t gcd, ro2;
-    mpz_inits(p, q, N, s, gcd, ro2, NULL);
-    mpz_inits(bbs->p, bbs->q, bbs->N, bbs->s, bbs->ro2, bbs->two, NULL);
+    mpz_init(p);
+    mpz_init(q);
+    mpz_init(N);
+    mpz_init(s);
+    mpz_init(gcd);
+    mpz_init(ro2);
+    mpz_init(bbs->p);
+    mpz_init(bbs->q);
+    mpz_init(bbs->N);
+    mpz_init(bbs->s);
+    mpz_init(bbs->ro2);
+    mpz_init(bbs->two);
     mpz_set_ui(p, 0);
     mpz_set_ui(q, 0);
     mpz_set_ui(gcd, 0);

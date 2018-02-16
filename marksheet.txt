@@ -66,7 +66,13 @@ Any other documentation, notes or comments that you think are important or
 might be easy to overlook (e.g., a subtle issue or technique in associated
 source code) should go here:
 
-[ I have created an approach to using pseudo-random generation using the
-Blum Blum Shub algorithm.]
+[
+
+I have created an approach to using pseudo-random generation using the Blum
+Blum Shub algorithm. p and q are generated from /dev/random accordingly.
+
+To build modmul in non debug mode please use `$ make build`.
+
+]
 
 -------------------------------------------------------------------------------
